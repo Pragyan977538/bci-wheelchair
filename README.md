@@ -87,23 +87,13 @@ $$
 
 ```
 ├── README.md
-├── report/
-│   ├── report.pdf          Stage 1 report
-│   └── report.tex          LaTeX source
-├── config/
-│   └── default.yaml        Model and experiment parameters
-├── src/
-│   ├── decoder/            Stage 1  EEG preprocessing, CSP–LDA decoder, calibration, latency
-│   ├── models/             Stage 2  BCI channel model, operator model
-│   ├── plants/             Stage 2  Wheelchair and double-integrator dynamics
-│   ├── control/            Stage 2  LQR, DWA, risk signal, arbitration laws
-│   ├── sim/                Stage 2  Closed-loop simulation and experiments
-│   └── analysis/           Stage 2  Stability analysis and figures
-├── data/
-│   └── interchange/        Stage 1 outputs consumed by Stage 2
-├── results/                Tables and figures
-├── tests/                  Unit tests
-└── requirements.txt
+├── report/                 Stage 1 report
+├── config/                 (incomplete)
+├── src/                    (incomplete)
+├── data/                   (incomplete)
+├── results/                (incomplete)
+├── tests/                  (incomplete)
+└── requirements.txt        (incomplete)
 ```
 
 ## 6. Remaining Work
