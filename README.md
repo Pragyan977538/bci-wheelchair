@@ -82,3 +82,21 @@ python -m src.decoder.run_stage1
 5. **Stability analysis.** Derive $\tau_{\max}(\alpha)$ and $\alpha^*$, and verify them numerically.
 6. **Simulation study.** Compare all policies across 9 subjects, 3 environments, and 20 random seeds on success rate, collision rate, and retained user authority.
 7. **Final report.** Consolidate results, ablations, and limitations.
+
+## Stage 1 Results
+
+Cross-session evaluation on **BNCI2014_001** (Train: Day 1, Test: Day 2, 4 classes, chance = 0.25)[cite: 3]:
+
+| Subject | Raw Acc | Calib. Acc | $\kappa$ | ECE Raw | ECE Calib. | Median Latency (s) | Censored |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **S1** | 0.576 | 0.556 | 0.407 | 0.138 | 0.150 | 2.00 | 0.12 |
+| **S2** | 0.611 | 0.556 | 0.407 | 0.150 | 0.075 | 3.55 | 0.46 |
+| **S3** | 0.708 | 0.691 | 0.588 | 0.146 | 0.044 | 2.00 | 0.02 |
+| **S4** | 0.389 | 0.389 | 0.185 | 0.142 | 0.077 | 4.00 | 1.00 |
+| **S5** | 0.312 | 0.191 | -0.079 | 0.148 | 0.144 | 4.00 | 0.92 |
+| **S6** | 0.368 | 0.378 | 0.171 | 0.188 | 0.030 | 4.00 | 0.83 |
+| **S7** | 0.469 | 0.396 | 0.194 | 0.299 | 0.188 | 2.00 | 0.02 |
+| **S8** | 0.535 | 0.497 | 0.329 | 0.091 | 0.094 | 3.70 | 0.40 |
+| **S9** | 0.378 | 0.337 | 0.116 | 0.157 | 0.063 | 4.00 | 0.99 |
+| **Mean** | **0.483** | **0.443** | **0.258** | **0.162** | **0.096** | **—** | **0.53** |
+
