@@ -7,7 +7,7 @@ This repository covers **decoder part**, the control part will be done in post m
 ---
 
 ## Project objective
-This project investigates how a brain-computer interface (BCI) can be used as a command channel for a wheelchair.
+This project is more about how a brain-computer interface (BCI) can be used as a command channel for a wheelchair.
 
 A BCI can decode a person's intended movement from EEG signals. However, EEG-based commands are not perfectly reliable: the decoder can make error , its confidence may not always represent its actual accuracy, and its performance can change between recording sessions.
 
