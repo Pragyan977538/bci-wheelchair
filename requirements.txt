@@ -1,8 +1,22 @@
-numpy
-pandas
-matplotlib
-scikit-learn>=1.6
-mne
-mne-qt-browser
-moabb
-notebook
+# Tested with Python 3.13 (Python 3.12 should also work).
+# Install with:  pip install -r requirements.txt
+
+# numbers and tables
+numpy==2.5.2
+pandas==3.0.5
+scipy==1.18.1
+
+# Part 1: EEG loading and the decoder
+mne==1.12.1
+moabb==1.7.1
+scikit-learn==1.9.0
+joblib==1.6.0
+
+# Part 2: Pade approximation in the stability section
+control==0.10.2
+
+# figures
+matplotlib==3.11.1
+
+# running the notebooks
+jupyter==1.1.1

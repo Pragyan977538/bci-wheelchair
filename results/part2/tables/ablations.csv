@@ -1,0 +1,7 @@
+,adaptive,safety_filter,confidence_only
+baseline,0.9963,0.3556,0.3148
+no_risk_term,0.7963,0.1185,0.3148
+perfect_confidence,0.9963,0.3556,0.5074
+no_delay,0.9963,0.35,0.3204
+no_burst_errors,0.9963,0.3444,0.3093
+confidence_decay,1.0,0.3556,0.5685

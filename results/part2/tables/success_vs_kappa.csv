@@ -1,0 +1,4 @@
+,pearson r,p,min success
+fixed_blend,0.551,0.124,0.017
+safety_filter,0.689,0.04,0.067
+adaptive,-0.125,0.749,0.983

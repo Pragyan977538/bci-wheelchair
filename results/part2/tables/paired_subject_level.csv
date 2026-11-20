@@ -1,0 +1,6 @@
+adaptive minus,difference,95% CI low,95% CI high,non-inferior (low > −δ),subjects with zero difference
+manual_only,0.8778,0.7907,0.9574,True,0
+autonomy_only,-0.0037,-0.0093,0.0,True,7
+fixed_blend,0.8352,0.7352,0.9241,True,0
+confidence_only,0.6815,0.6037,0.7574,True,0
+safety_filter,0.6407,0.5759,0.7259,True,0

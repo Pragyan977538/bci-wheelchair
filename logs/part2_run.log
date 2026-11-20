@@ -1,0 +1,45 @@
+Part 2 run log
+python packages: numpy 2.5.2, pandas 3.0.5, scipy 1.18.1, scikit-learn 1.9.0
+
+Section 2: bridge to Part 1 (largest difference from summary_by_subject.csv)
+calib_acc            0.000044
+kappa                0.000044
+median_latency       0.000000
+censored_fraction    0.000033
+subjects with significant error bursts: 0 of 9
+pooled confidence AUC: 0.676
+
+Section 6.4: re-simulated drives vs saved log
+drives re-simulated: 72
+same outcome, time and decisions: 72 of 72
+largest relative difference in any metric: 1.1e-09
+
+Section 6.7: main comparison (540 drives per rule)
+                 success  collisions  time_s  mean_alpha  intervention
+variant                                                               
+manual_only        0.119       0.881   9.338       1.000         0.000
+autonomy_only      1.000       0.000  10.467       0.000         0.913
+fixed_blend        0.161       0.839   9.779       0.500         0.933
+confidence_only    0.315       0.683  10.165       0.387         0.931
+adaptive           0.996       0.004  11.732       0.118         0.914
+safety_filter      0.356       0.120  44.816       0.771         0.350
+
+Section 6.8: adaptive minus other rule, subject-level bootstrap
+                 difference  95% CI low  95% CI high  non-inferior (low > −δ)  subjects with zero difference
+adaptive minus                                                                                              
+manual_only           0.878       0.791        0.957                     True                              0
+autonomy_only        -0.004      -0.009        0.000                     True                              7
+fixed_blend           0.835       0.735        0.924                     True                              0
+confidence_only       0.681       0.604        0.757                     True                              0
+safety_filter         0.641       0.576        0.726                     True                              0
+
+Section 7: stability
+LQR gains K1 = 3.162278, K2 = 1.885231
+tau_max(alpha=1) = 0.529029 s
+delay-independent below alpha = 0.441425
+heading loop: alpha* = 0.6126, tau_max(1) = 0.6473 s
+       formula (s)  simulation (s)  relative error
+alpha                                             
+0.6       1.140974        1.140974    1.353561e-07
+0.8       0.711439        0.711440    9.980337e-07
+1.0       0.529029        0.529031    4.019680e-06

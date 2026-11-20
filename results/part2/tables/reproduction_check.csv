@@ -1,0 +1,10 @@
+condition,outcome identical,all 11 bit-identical,largest relative difference
+ablation:confidence_decay,1.0,0.875,3.6945312062697565e-16
+ablation:fixed_alpha,1.0,1.0,0.0
+ablation:no_burst_errors,1.0,0.375,6.967133960063276e-11
+ablation:no_delay,1.0,0.5,1.0942957980329169e-09
+ablation:no_risk_term,1.0,0.625,7.544055750755052e-15
+ablation:perfect_confidence,1.0,0.75,1.2696503840689592e-16
+alpha_sweep,1.0,0.875,1.599938431120042e-16
+burstiness,1.0,0.625,1.4940005598371238e-10
+main,1.0,0.5,7.544029125784505e-15

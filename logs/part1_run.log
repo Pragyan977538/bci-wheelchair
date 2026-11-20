@@ -1,0 +1,18 @@
+Part 1 run log
+mne 1.12.1, seed 20260901
+
+ subject  raw_acc  calib_acc   kappa  raw_ece  calib_ece  median_latency  censored_fraction
+       1   0.5764     0.5556  0.4074   0.1379     0.1498            2.00             0.1250
+       2   0.6111     0.5556  0.4074   0.1501     0.0747            3.55             0.4583
+       3   0.7083     0.6910  0.5880   0.1463     0.0445            2.00             0.0208
+       4   0.3889     0.3889  0.1852   0.1417     0.0769            4.00             1.0000
+       5   0.3125     0.1910 -0.0787   0.1478     0.1441            4.00             0.9236
+       6   0.3681     0.3785  0.1713   0.1884     0.0297            4.00             0.8264
+       7   0.4688     0.3958  0.1944   0.2990     0.1884            2.00             0.0243
+       8   0.5347     0.4965  0.3287   0.0909     0.0938            3.70             0.4028
+       9   0.3785     0.3368  0.1157   0.1565     0.0628            4.00             0.9896
+
+mean calibrated accuracy 0.443, mean kappa 0.258
+mean ECE: calibrated 0.096, raw (raw prediction) 0.162, raw (calibrated prediction, as in the report) 0.196
+censored trials: 1374 of 2592
+wrote results/part1/decoder_traces.csv (2592 rows) and 9 models to logs/decoder_models

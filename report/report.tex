@@ -1,0 +1,3570 @@
+% =====================================================================
+%  Confidence-Adaptive Shared Control for a BCI-Driven Wheelchair
+%  Final project report.
+%
+%  COMPILE:
+%      cd docs
+%      pdflatex report_modified.tex
+%      pdflatex report_modified.tex   (twice, for the table of contents and refs)
+%
+%  Figures are pulled from ../results/figures/ via \graphicspath below, so
+%  the file compiles from either docs/ or the repository root without
+%  copying anything.  Regenerate them with:
+%      python -m src.analysis.run_stage8
+%
+%  Packages used are all standard TeX Live / MiKTeX.
+% =====================================================================
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}   % provides bsmallmatrix
+\usepackage{cancel}      % provides \cancel, used in the derivation
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{xcolor}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
+
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue]{hyperref}
+
+% ---------------------------------------------------------------------
+% Figures live outside docs/.  Try every sensible root.
+% ---------------------------------------------------------------------
+\graphicspath{{../results/figures/}{results/figures/}{figures/}{./}}
+
+% ---------------------------------------------------------------------
+% Shorthands.  The variant names contain underscores; defining them once
+% means they cannot be mis-escaped later.
+% ---------------------------------------------------------------------
+\newcommand{\vmanual}{\texttt{manual\_only}}
+\newcommand{\vauto}{\texttt{autonomy\_only}}
+\newcommand{\vfixed}{\texttt{fixed\_blend}}
+\newcommand{\vconf}{\texttt{confidence\_only}}
+\newcommand{\vadapt}{\texttt{adaptive}}
+\newcommand{\vsafety}{\texttt{safety\_filter}}
+\newcommand{\astar}{\alpha^{*}}
+\newcommand{\ubci}{u_{\mathrm{bci}}}
+\newcommand{\uauto}{u_{\mathrm{auto}}}
+\newcommand{\ttc}{t_{\mathrm{c}}}
+
+\captionsetup{font=small,labelfont=bf}
+\setlength{\parskip}{0.4em}
+\setlength{\emergencystretch}{3em}
+\setlength{\parindent}{0pt}
+
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}
+\theoremstyle{definition}
+\newtheorem{remark}{Remark}
+
+% =====================================================================
+\begin{document}
+% =====================================================================
+
+\hypersetup{pageanchor=false}
+\begin{titlepage}
+\centering
+\vspace*{2.5cm}
+
+{\LARGE\bfseries Risk-Gated Shared Control Authority\\[0.35em]
+for a Brain--Computer-Interface-Driven Wheelchair\par}
+
+\vspace{0.8cm}
+{\large A study of the human--autonomy arbitration law\\
+$u = \alpha\,\ubci + (1-\alpha)\,\uauto$\\
+under transport delay, decoder error and situational risk\par}
+
+\vspace{2.0cm}
+{\large Final Project Report\par}
+\vspace{0.4cm}
+{\large Control Systems\par}
+\vspace{0.3cm}
+{\large Indian Institute of Technology Bombay\par}
+
+\vspace{2.5cm}
+\begin{minipage}{0.8\textwidth}
+\centering
+\rule{\textwidth}{0.4pt}\\[0.6em]
+{\small
+32{,}400 simulated episodes $\cdot$ 9 subjects of real EEG $\cdot$
+3 environments $\cdot$ 6 arbitration policies\\
+170 automated tests $\cdot$ delay boundary checked four ways
+}\\[0.6em]
+\rule{\textwidth}{0.4pt}
+\end{minipage}
+
+\vspace{1.0cm}
+\begin{minipage}{0.8\textwidth}
+\centering
+{\small\bfseries Simulation study. Not validated for physical or
+clinical use.}
+\end{minipage}
+
+\vfill
+{\large \today\par}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+
+% ---------------------------------------------------------------------
+\begin{abstract}
+\noindent
+A brain--computer interface (BCI) that decodes motor imagery from
+scalp EEG is a control channel with three severe defects: it is
+\emph{wrong} a large fraction of the time, it is \emph{late}, and it is
+\emph{low-rate}. On the nine subjects of the BNCI2014\_001 dataset, a
+frozen CSP + shrinkage-LDA decoder evaluated strictly across sessions
+attains a mean accuracy of $0.443$ against a chance level of $0.25$
+($\kappa = 0.258$). A wheelchair driven directly from that channel is
+not usable: in simulation it reaches the goal in $11.9\%$ of episodes
+and collides in $88.1\%$ --- partly because the simulated operator
+steers straight at the goal and does not itself avoid obstacles.
+
+This report studies the control-theoretic remedy: blend the user's
+command with the command of an autonomous navigator through a scalar
+authority $\alpha \in [0,1]$, and choose $\alpha$ online. Six policies
+are compared over a fully paired $32{,}400$-episode experiment. The
+proposed law, $\alpha = c\,(1-r)$ with $c$ the calibrated decoder
+posterior and $r$ a time-to-collision risk signal, achieves a $99.6\%$
+success rate with a $0.4\%$ collision rate while still routing $12\%$ of
+authority to the user, and --- the result we consider most important ---
+it holds $0.98$--$1.00$ success for \emph{every} subject, including one
+whose decoder performs below chance ($\kappa = -0.079$), although that
+subject receives only about $3\%$ authority. It therefore
+decouples task success from decoder quality, a link that is visible
+under fixed blending and under the safety filter (Pearson $r = +0.55$
+and $+0.69$ across the nine subjects).
+
+On the control-theory side we derive the transport-delay stability
+boundary of the blended loop \emph{exactly} rather than by
+approximation. Substituting $s = j\omega$ into the characteristic
+equation and imposing $\cos^2 + \sin^2 = 1$ causes the delay to cancel
+identically, leaving a quadratic in $\omega^2$ whose positive roots are
+the crossing frequencies. This yields $\tau_{\max}(\alpha)$ in closed
+form, an upper bound $\astar = K_1/(K_1+K_p)$ on the authorities at which
+the loop is stable for every delay, and a closed-form criterion,
+$b(\astar) \ge 0$, deciding whether that bound is tight. The boundary agrees with an independent
+package implementation at $\alpha = 1$ to $2.2\times 10^{-16}$\,s, with
+direct delay differential equation (DDE) bisection at six authorities to
+$4.6\times10^{-4}\%$, and with
+an independent base-MATLAB implementation exactly at $\alpha = 1$ and to
+$5\times10^{-10}$\,s over the whole curve.
+
+We report three findings against our own interest. The adaptive policy
+is \emph{not} statistically better than simply ceding control to the
+autonomy ($\Delta = -0.004$, 95\% CI $[-0.009,\ +0.000]$). Ablation shows that
+the \emph{risk} term is what keeps the policy safe: deleting risk costs
+$20$ points of success, whereas replacing the measured confidence with a
+perfect oracle leaves success unchanged at its ceiling ($0.996$) and
+instead doubles the authority returned to the user. And two negative
+results are reported as negative: decoder errors show no burst structure
+on this dataset, and a minimum-intervention safety filter is safe but
+not helpful. The law is accordingly reframed as \emph{risk-gated
+authority} rather than confidence-adaptive control.
+\end{abstract}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+% =====================================================================
+\section{Introduction and Problem Statement}
+% =====================================================================
+
+\subsection{Motivation}
+
+A person with a high-level spinal cord injury or advanced amyotrophic
+lateral sclerosis may retain the ability to \emph{imagine} moving a
+limb while retaining no ability to move it. Motor imagery produces
+measurable, lateralised changes in the $\mu$ (8--13\,Hz) and $\beta$
+(13--30\,Hz) rhythms over sensorimotor cortex, and those changes can be
+decoded from scalp EEG. This is the physical basis of a motor-imagery
+BCI, and it is the only viable control channel for some users.
+
+It is also, by the standards of any other control system, an appalling
+one. Table~\ref{tab:decoder} reports what a carefully constructed
+decoder actually achieves on nine subjects when it is trained on one
+recording session and evaluated on another: a mean accuracy of $0.443$
+on a four-class problem. One subject's decoder performs \emph{below
+chance}. Decisions arrive roughly every two seconds and are themselves
+late by a subject-dependent interval that we measure rather than assume.
+
+Connecting such a channel directly to the wheels of a powered
+wheelchair is unsafe, and this is not a matter of opinion: our
+simulation puts the collision rate at $88.1\%$. The engineering answer
+that the field has converged on is \emph{shared control} --- give the
+vehicle its own autonomous navigator and split the control authority
+between the two. The question that remains, and the question this
+project is about, is how to split it.
+
+\subsection{The research question}
+
+The arbitration law under study is the standard convex blend,
+
+\begin{equation}
+u(t) \;=\; \alpha(t)\,\ubci(t) \;+\; \bigl(1-\alpha(t)\bigr)\,\uauto(t),
+\qquad \alpha(t) \in [0,1],
+\label{eq:arb}
+\end{equation}
+
+where $\ubci$ is the command derived from the user's decoded intention
+and $\uauto$ is the command produced by an autonomous navigation
+controller. Setting $\alpha \equiv 1$ recovers manual driving;
+$\alpha \equiv 0$ recovers full autonomy. The research question is:
+
+\begin{quote}
+\itshape
+Given a command channel that is delayed, low-rate, and wrong 56\% of
+the time, how should control authority $\alpha$ be allocated between the
+human and the autonomous controller so that the closed loop remains
+stable and the navigation task succeeds --- and what is the
+delay margin of the resulting loop as a function of $\alpha$?
+\end{quote}
+
+It is worth stating plainly what the question is \emph{not}. This is
+not a project about decoding EEG better. The decoder is constructed
+once, in Stage 1, and is then \textbf{frozen}: no later stage tunes it,
+and no reported result depends on improving it. That constraint is
+deliberate and is enforced by the repository's own structure --- the
+decoder's only outputs to the rest of the system are two files in
+\texttt{data/interchange/}. Any effort spent raising decoder accuracy
+would be effort taken from the control problem, which is the actual
+subject.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+\item \textbf{An exact transport-delay stability boundary} for the
+blended loop, $\tau_{\max}(\alpha)$, obtained by showing that the delay
+cancels identically from the magnitude condition, together with a
+closed-form criterion in the gains alone for when the delay-independent
+authority bound $\astar$ is tight (Section~\ref{sec:math}).
+
+\item \textbf{A four-way verification of that boundary}: against an
+independent package implementation, against direct DDE integration
+(settle/diverge), against DDE bisection, and against an independent
+implementation in base MATLAB with no shared code
+(Section~\ref{sec:verification}).
+
+\item \textbf{A fully paired 32{,}400-episode comparison} of six
+arbitration policies on real per-subject decoder statistics, showing
+that risk-gated authority decouples task success from decoder quality
+(Section~\ref{sec:results}).
+
+\item \textbf{An ablation that contradicts the policy's own name}:
+situational risk, not decoder confidence, is what keeps the policy safe;
+confidence only sets how much authority is returned
+(Section~\ref{sec:ablations}).
+
+\item \textbf{A demonstrated failure mode of convex blending} in the
+closed loop with actuator lag: two individually safe commands whose
+average collides, in a geometry constructed so that the failure is
+guaranteed rather than hoped for (Section~\ref{sec:averaging}).
+
+\item \textbf{Two negative results reported as negative} --- the absence
+of burst structure in decoder errors on this dataset, and the
+insufficiency of minimum-intervention safety filtering
+(Section~\ref{sec:negative}).
+\end{enumerate}
+
+\subsection{Reproducibility contract}
+
+Every number in this report is reproducible. The root seed is fixed
+(\texttt{meta.seed: 20260901}); every random draw in the system descends
+from it; and reruns are bit-identical, not merely statistically similar.
+All parameters live in \texttt{config/}, and the repository holds itself
+to the rule that a numeric literal appearing in a \texttt{.py} file and
+not derived from another value is a bug. Package versions are pinned
+(Appendix~\ref{sec:repro}). The full command sequence that regenerates
+every table and figure in this document is given in
+Appendix~\ref{sec:repro}.
+
+\subsection{Related work}
+\label{sec:related}
+
+\textbf{Brain-actuated wheelchairs and shared control.} Driving a
+wheelchair from a motor-imagery BCI has been pursued for nearly two
+decades, and the consistent finding is that raw decoder output is not
+usable on its own. Vanacker et al.~\cite{vanacker2007context} introduced
+context-based filtering for assisted brain-actuated driving, in which
+the environment constrains what the decoded intent is allowed to mean;
+Carlson and Mill\'an~\cite{carlson2013wheelchairs} developed that into a
+full robotic architecture and showed asynchronous motor-imagery control
+outperforming synchronous P300 alternatives. This report inherits their
+premise --- assistance is mandatory, not optional --- and differs in what
+it measures: rather than demonstrating a working system, it isolates
+\emph{which term} of the arbitration law is responsible for the
+assistance, and reports that the answer is not the one the policy is
+named after.
+
+\textbf{Arbitration as policy blending.} The law
+$u = \alpha\,\ubci + (1-\alpha)\,\uauto$ used here is an instance of the
+policy-blending formalism of Dragan and
+Srinivasa~\cite{dragan2013blending}, who separate assistance into
+\emph{prediction} of user intent and \emph{arbitration} between that
+prediction and the user's input, and observe that most shared-control
+schemes differ only in how arbitration is chosen. Abbink et
+al.~\cite{abbink2018topology} give a broader topology and a set of design
+axioms for the field. The present work is a study of the arbitration
+function alone, holding prediction fixed at whatever the decoder
+supplies.
+
+\textbf{Motor-imagery decoding.} The neurophysiological basis is
+event-related desynchronisation over sensorimotor cortex during imagined
+movement~\cite{pfurtscheller2001mi}. The decoding pipeline used here is
+deliberately conventional so that the control results are not confounded
+by decoder novelty: common spatial patterns~\cite{ramoser2000csp} for
+spatial filtering, linear discriminant analysis regularised by
+shrinkage~\cite{blankertz2011shrinkage}, and Platt
+scaling~\cite{platt1999sigmoid} to turn discriminant scores into
+calibrated posteriors --- the posteriors that the arbitration law then
+consumes as ``confidence''. Data are the four-class Graz set
+distributed as BCI Competition~IV dataset~2a~\cite{brunner2008graz},
+accessed through MOABB~\cite{jayaram2018moabb} and
+MNE-Python~\cite{gramfort2013mne} so that the preprocessing is the
+community-standard one rather than a bespoke variant.
+
+\textbf{Autonomy and safety.} The autonomous partner is a dynamic-window
+planner~\cite{fox1997dwa}, chosen because it is derived from the
+vehicle's own velocity and acceleration limits, which is what makes the
+infeasibility result of Section~\ref{sec:unrecoverable} interpretable: when all
+candidates in the dynamic window collide, that is a statement about the
+chair's dynamics rather than about a planner's parameters. The
+minimum-intervention filter studied here is a time-to-collision
+heuristic; the modern formulation of the same idea is the control barrier
+function~\cite{ames2019cbf}, which would replace the heuristic with a
+forward-invariance guarantee and is a natural next step.
+
+\textbf{Delay.} The stability analysis follows standard frequency-domain
+treatment of retarded systems~\cite{gu2003delay}: substituting
+$s = j\omega$ into the characteristic quasi-polynomial and solving for
+the crossing frequency. What is specific here is that the delay cancels
+identically, reducing an infinite-dimensional problem to a quadratic, and
+that the resulting delay-independent bound admits a closed-form
+tightness criterion (Section~\ref{sec:math}).
+
+% =====================================================================
+\section{System Architecture}
+% =====================================================================
+
+\subsection{Signal flow}
+
+Figure~\ref{fig:block} shows the closed loop. Reading it from the left:
+the simulated operator observes the plant state \emph{as it was
+$\tau_h$ seconds ago}, forms an intent, and that intent passes through
+a command channel that samples it at the decoder's decision rate,
+delays it by a measured latency, and corrupts it while the decoder is
+in its degraded state. In parallel, the autonomous layer plans from the
+\emph{true} current state. The arbitration block combines the two using
+$\alpha$, which is itself computed from the decoder's calibrated
+confidence and from a situational risk signal derived from the
+time-to-collision of the command the user is asking for.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+   block/.style={draw, rounded corners, minimum width=2.6cm,
+                 minimum height=1.1cm, align=center, font=\small},
+   wide/.style={draw, rounded corners, minimum width=4.4cm,
+                minimum height=1.1cm, align=center, font=\small},
+   sig/.style={-{Latex[length=2.2mm]}, thick},
+   lbl/.style={font=\scriptsize, inner sep=1.5pt}]
+
+  \node[block] (op)    at (0,3.0)    {Operator model\\delayed PD, $\tau_h$};
+  \node[block] (ch)    at (4.6,3.0)  {Command channel\\ZOH, latency, Markov};
+  \node[block] (auto)  at (4.6,0.8)  {Autonomy\\DWA / LQR};
+  \node[wide]  (arb)   at (9.5,2.0)  {Arbitration\\$u=\alpha \ubci+(1-\alpha)\uauto$};
+  \node[block] (plant) at (13.7,2.0) {Plant\\unicycle / DI};
+  \node[block] (risk)  at (9.5,-0.6) {Risk signal\\TTC ramp $+$ lag};
+
+  \draw[sig] (op) -- node[lbl,above]{intent} (ch);
+  \draw[sig] (ch) -- node[lbl,above right]{$\ubci$, $c$} (arb);
+  \draw[sig] (auto) -- node[lbl,below right]{$\uauto$} (arb);
+  \draw[sig] (risk) -- node[lbl,right]{$r$} (arb);
+  \draw[sig] (arb) -- node[lbl,above]{$u$} (plant);
+  \draw[sig] (ch.east) -- ++(0.7,0) |- node[lbl,above right]{$\ubci$} (risk.west);
+
+  \draw[thick] (plant.south) -- (13.7,-2.8) -- (0,-2.8);
+  \draw[sig] (0,-2.8)   -- node[lbl,left]{delayed state} (op.south);
+  \draw[sig] (4.6,-2.8) -- node[lbl,left]{true state} (auto.south);
+  \draw[sig] (9.5,-2.8) -- (risk.south);
+\end{tikzpicture}}
+\caption{Closed-loop architecture. The operator path is delayed,
+sampled at the decoder's decision rate and stochastically corrupted;
+the autonomy path is not. Arbitration acts in the plant's own input
+space, which is where the averaging failure of
+Section~\ref{sec:averaging} originates. The risk signal is evaluated on
+$\ubci$ --- the command the user is asking for --- because the question
+it must answer is ``how bad would it be to obey?''.}
+\label{fig:block}
+\end{figure}
+
+The ordering of operations within one simulation step is not arbitrary
+and is worth stating explicitly, because several plausible orderings
+silently destroy the phenomenon under study:
+
+\begin{enumerate}
+\item The operator reads the state as it was $\tau_h$ ago and forms an intent.
+\item The channel samples that intent at the decision rate, delays it by
+      a sampled latency, corrupts it if degraded, and reports a confidence.
+\item The intent is converted to a plant command using the
+      \emph{operator's delayed view} --- a human acts on the world as they
+      last saw it, not on the world as it is.
+\item The autonomous layer plans from the \emph{true} current state,
+      replanning at $10$\,Hz and holding between plans.
+\item The risk signal is evaluated on $\ubci$, not on the blend.
+\item Arbitration produces $u$; the plant advances by $dt = 0.02$\,s.
+\end{enumerate}
+
+\subsection{Software architecture}
+
+The implementation is nine stages, each with a single responsibility and
+an explicit interface to the next. Table~\ref{tab:layout} lists the
+mapping from stage to module.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llp{7.6cm}@{}}
+\toprule
+Stage & Module & Responsibility \\
+\midrule
+1 & \texttt{src/decoder/}   & EEG loading, CSP + LDA, Platt calibration,
+                              latency measurement. \textbf{Frozen} afterwards. \\
+2 & \texttt{src/models/command\_error.py} & Two-state Markov error model,
+                              latency sampler, confusion sampler. \\
+3 & \texttt{src/plants/}    & Double integrator, unicycle, occupancy grids. \\
+4 & \texttt{src/models/operator.py} & Delayed-PD operator and the transport-delay buffer. \\
+5 & \texttt{src/control/}   & LQR, DWA, risk signal, six arbitration variants. \\
+6 & \texttt{src/sim/}       & Episode loop and the experiment grid. \\
+7 & \texttt{src/analysis/stability.py} & Exact delay boundary and its three checks. \\
+8 & \texttt{src/analysis/figures.py} & All figures. \\
+--- & \texttt{matlab/}, \texttt{mathematica/} & Independent cross-checks. \\
+\bottomrule
+\end{tabular}
+\caption{Stage-to-module map. Each stage's outputs to later stages are
+files in \texttt{data/interchange/} or a documented Python interface;
+no stage reaches into another's internals.}
+\label{tab:layout}
+\end{table}
+
+Python is the only executable runtime. MATLAB and Mathematica artefacts
+are generated as scripts for the user to run, and the two ecosystems
+communicate \emph{only} through files in \texttt{data/interchange/}
+(CSV for tables, JSON for parameters). There is no live bridge and no
+MATLAB Engine dependency. This is a deliberate constraint: it means the
+MATLAB verification in Section~\ref{sec:verification} shares no code
+whatsoever with the Python implementation, which is exactly what makes
+its agreement evidential.
+
+\subsection{Configuration and determinism}
+
+All parameters --- filter bands, gains, thresholds, sweep ranges,
+ablation definitions --- live in \texttt{config/default.yaml} and
+\texttt{config/environments.yaml}. The loader supports dotted access and
+non-mutating overrides, and \emph{raises} on an override that names a
+key which does not exist. That last detail is not fussiness: four of the
+six ablations were initially written against config keys that did not
+exist, so they would have applied nothing and been faithfully reported
+as ``no effect''. The test
+\texttt{test\_every\_declared\_ablation\_targets\_a\_real\_key} caught
+all four.
+
+Determinism is enforced at the episode level. Each episode's generator
+is seeded from the tuple $(\text{root seed}, \text{subject},
+\text{environment}, \text{seed index}, \text{burst setting})$. The
+\emph{variant is deliberately excluded} from that key, so every
+arbitration policy meets a bit-identical realisation of decoder errors,
+latencies and confusions. This is what makes the paired statistics of
+Section~\ref{sec:results} legitimate rather than decorative, and it is
+asserted by
+\texttt{test\_variants\_are\_paired\_on\_identical\_noise}.
+
+% =====================================================================
+\section{The BCI Data Pipeline}
+\label{sec:bci}
+% =====================================================================
+
+\subsection{Dataset and preprocessing}
+
+We use BNCI2014\_001 (BCI Competition IV dataset 2a) through MOABB:
+nine subjects, four motor-imagery classes (left hand, right hand, feet,
+tongue), two sessions recorded on separate days, $288$ trials per
+session, 22 EEG channels at $250$\,Hz. Training uses session
+\texttt{0train}; evaluation uses session \texttt{1test}. No trial
+crosses between them, so the evaluation is strictly cross-session ---
+the harder and more honest split, since a real user does not recalibrate
+mid-day.
+
+Preprocessing is a fourth-order Butterworth bandpass at $8$--$30$\,Hz
+(covering $\mu$ and $\beta$), EOG channels dropped, and epochs taken
+from $0.5$ to $2.5$\,s relative to \emph{cue onset}. No baseline
+correction is applied, because the feature is band power and baseline
+subtraction would distort it.
+
+\begin{remark}[A silent labelling trap]
+The dataset advertises the event mapping
+\[
+\{\,\text{left\_hand}{:}1,\;\text{right\_hand}{:}2,\;
+   \text{feet}{:}3,\;\text{tongue}{:}4\,\},
+\]
+whereas MNE's \texttt{events\_from\_annotations} returns events in
+\emph{alphabetical} order, giving
+\[
+\{\,\text{feet}{:}1,\;\text{left\_hand}{:}2,\;
+   \text{right\_hand}{:}3,\;\text{tongue}{:}4\,\}.
+\]
+Using the advertised map permutes every label in
+the dataset, and the resulting accuracy remains entirely plausible ---
+it simply measures nothing. Labels are therefore resolved by
+\emph{name} only, pinned by
+\texttt{tests/test\_decoder\_labels.py}.
+\end{remark}
+
+\subsection{Decoder and calibration}
+
+Features are six Common Spatial Pattern components with log-variance
+pooling; the classifier is Linear Discriminant Analysis with
+Ledoit--Wolf shrinkage. This is a deliberately conventional pipeline:
+the project needs a decoder that is representative, not one that is
+optimal.
+
+Raw LDA scores are not probabilities, and the arbitration law consumes
+$\alpha = c$ directly in one variant, so an over-confident decoder does
+not merely mispredict --- it \emph{hands authority to a wrong command}.
+We therefore apply Platt scaling fitted on a stratified $25\%$ holdout
+carved from the training session only. Calibration quality is measured
+by expected calibration error (ECE) over ten bins.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Subject & Accuracy & $\kappa$ & ECE (cal.) & ECE (raw) & Median latency (s) & Censored \\
+\midrule
+1 & 0.556 & 0.407 & 0.150 & 0.158 & 2.00 & 0.12 \\
+2 & 0.556 & 0.407 & 0.075 & 0.167 & 3.55 & 0.46 \\
+3 & 0.691 & 0.588 & 0.044 & 0.164 & 2.00 & 0.02 \\
+4 & 0.389 & 0.185 & 0.077 & 0.131 & 4.00 & 1.00 \\
+5 & 0.191 & $-0.079$ & 0.144 & 0.268 & 4.00 & 0.92 \\
+6 & 0.378 & 0.171 & 0.030 & 0.190 & 4.00 & 0.83 \\
+7 & 0.396 & 0.194 & 0.188 & 0.371 & 2.00 & 0.02 \\
+8 & 0.497 & 0.329 & 0.094 & 0.122 & 3.70 & 0.40 \\
+9 & 0.337 & 0.116 & 0.063 & 0.192 & 4.00 & 0.99 \\
+\midrule
+\textbf{Mean} & \textbf{0.443} & \textbf{0.258} & \textbf{0.096} & \textbf{0.196} & --- & --- \\
+\bottomrule
+\end{tabular}
+\caption{Frozen decoder performance, cross-session. Chance accuracy is
+$0.25$. Calibration roughly halves ECE ($0.196 \rightarrow 0.096$) and
+improves every subject. Subject 5's decoder performs below chance and
+is retained deliberately: a below-chance decoder is precisely the
+condition under which shared control has to earn its place.}
+\label{tab:decoder}
+\end{table}
+
+\begin{remark}[$\kappa$ carries no information beyond accuracy here]
+BNCI2014\_001 is exactly balanced, 72 trials per class per session.
+Chance agreement is then
+$p_e = \sum_i (\hat n_i/N)(n_i/N) = \tfrac14 \sum_i \hat n_i/N = 0.25$
+\emph{regardless of how the predictions are distributed}, so
+$\kappa = (\text{accuracy} - 0.25)/0.75$ identically. Reporting both as
+independent evidence would overstate the case. This identity is pinned
+by a unit test.
+\end{remark}
+
+\begin{remark}[The mean is low, and it is not leakage]
+Mean $\kappa = 0.258$ sits below the $\approx 0.4$ often quoted for this
+dataset. We checked rather than assumed. Leakage would \emph{inflate} accuracy, so it
+cannot explain a low mean; what needs explaining is the gap between
+within-session cross-validation and cross-session evaluation (subject 3:
+$0.784$ in cross-validation, $0.691$ on the held-out day). The fitting,
+calibration and evaluation sets are disjoint by construction, which
+\texttt{test\_decoder\_leakage.py} pins. Subjects 4 and 9 score slightly
+\emph{higher} on the held-out session than in cross-validation ($0.389$
+vs.\ $0.323$; $0.337$ vs.\ $0.330$), which is consistent with this but
+too small to prove anything on its own. Subject 3 reaching $0.784$ in
+cross-validation shows the pipeline is capable. The gap is genuine
+cross-session non-stationarity --- which is exactly the phenomenon this
+project exists to control for. Published higher figures generally use
+filter-bank CSP and/or within-session validation.
+\end{remark}
+
+\subsection{Measuring decision latency}
+
+A cued paradigm has no natural decision latency: the subject is told
+when to imagine. Rather than invent a constant, we \emph{measure} one.
+The frozen decoder's own $2$\,s window is slid across the imagery period
+in $0.1$\,s steps from $0$ to $4$\,s post-cue, and latency is defined as
+the end of the first window whose calibrated posterior for the
+\texttt{argmax} class crosses $0.5$.
+
+Trials that never cross are \textbf{censored at the $4$\,s horizon and
+flagged}, never dropped. Dropping them would bias the distribution
+toward exactly the confident trials, understating latency. Censoring is
+strongly subject-dependent (from $0.02$ for subject 3 to $1.00$ for
+subject 4) and is itself a usable signal: a subject whose decoder never
+becomes confident should not be handed authority.
+
+Latency is later sampled by bootstrap rather than fitted to a
+parametric family, because several subjects show a bimodal
+distribution --- an early mode where the decoder becomes confident, and
+a spike at the censoring horizon where it never does.
+
+\subsection{The command-error model, and a negative result}
+\label{sec:markov}
+
+The project brief specified, correctly as a general principle, that
+decoder errors should \emph{not} be modelled as i.i.d.\
+$\mathrm{Bernoulli}(\pi)$ at the marginal error rate $\pi$, but as a
+two-state Markov
+process over $\{\text{reliable}, \text{degraded}\}$, so that errors
+arrive in bursts as they do in practice. We fitted that chain per
+subject by maximum likelihood on transition counts with Laplace
+smoothing, respecting run boundaries (a session is six runs separated by
+rest breaks; the last trial of one run and the first of the next are
+minutes apart and are not a transition).
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lrrrrrrrl@{}}
+\toprule
+Subject & Error rate & $p(d{\to}d)$ & $p(r{\to}d)$ & Mean burst & i.i.d.\ burst & LR & $p$ & Bursty? \\
+\midrule
+1 & 0.444 & 0.504 & 0.395 & 2.02 & 1.80 & 3.36 & 0.067 & no \\
+2 & 0.444 & 0.419 & 0.462 & 1.72 & 1.80 & 0.51 & 0.474 & no \\
+3 & 0.309 & 0.388 & 0.274 & 1.63 & 1.45 & 3.55 & 0.060 & no \\
+4 & 0.611 & 0.641 & 0.571 & 2.79 & 2.57 & 1.38 & 0.240 & no \\
+5 & 0.809 & 0.822 & 0.788 & 5.61 & 5.24 & 0.30 & 0.582 & no \\
+6 & 0.622 & 0.616 & 0.629 & 2.60 & 2.64 & 0.05 & 0.831 & no \\
+7 & 0.604 & 0.580 & 0.637 & 2.38 & 2.53 & 0.93 & 0.334 & no \\
+8 & 0.503 & 0.489 & 0.511 & 1.96 & 2.01 & 0.13 & 0.721 & no \\
+9 & 0.663 & 0.676 & 0.638 & 3.08 & 2.97 & 0.39 & 0.534 & no \\
+\bottomrule
+\end{tabular}
+\caption{Fitted two-state error chains. \textbf{Zero of nine} subjects
+show significant burst structure by a likelihood-ratio test against
+i.i.d.\ ($\mathrm{df}=1$, $\alpha=0.05$). For most subjects
+$p(d{\to}d) \approx p(r{\to}d) \approx$ the marginal error rate, which
+is the definition of memorylessness.}
+\label{tab:markov}
+\end{table}
+
+The premise does not hold on this dataset, as
+Table~\ref{tab:markov} shows. Before reporting a null we
+established that the test has power, using synthetic sequences of
+identical length and run structure: at true $p(d{\to}d) = 0.85$ the test
+fires at $p < 0.0001$ ($\mathrm{LR} = 108.4$), and at $0.70$ at
+$p<0.0001$ ($\mathrm{LR}=66.8$); it correctly declines to fire when
+clustering is marginal. The null on real data is therefore a
+measurement, not blindness.
+
+There is a structural explanation. Error rate depends overwhelmingly on
+\emph{which class was cued} --- subject 1's per-class error rates are
+$(0.556, 0.306, 0.847, 0.069)$, a spread of $0.778$, because the
+decoder is biased toward \texttt{tongue}. BNCI2014\_001 randomises cue
+order by design, so correctness inherits that randomisation and any slow
+drift in the subject's state is swamped by the class effect. The absence
+of bursts is a property of \emph{this cued, balanced, randomised
+laboratory paradigm}, not evidence that BCI errors are generally
+memoryless; a self-paced continuous-control BCI would very plausibly
+show clustering.
+
+Rather than fake the phenomenon or delete the machinery, burstiness was
+promoted from an assumption to a \textbf{swept independent variable}.
+The chain can be re-parameterised to impose a target mean burst length
+$B$ while holding each subject's measured error rate $\pi$ fixed:
+
+\begin{equation}
+p_{d\to r} = \frac{1}{B},
+\qquad
+p_{r \to d} = \frac{\pi\, p_{d \to r}}{1-\pi},
+\qquad
+p_{d\to d} = 1 - p_{d\to r}.
+\label{eq:burst}
+\end{equation}
+
+At $B = 1/(1-\pi)$ the transitions become memoryless with error
+probability $\pi$, so the i.i.d.\ transition condition is a \emph{point
+on the sweep} rather than a separate condition. That point is
+\textbf{subject-specific}: $B_{\mathrm{iid}} = 1/(1-\pi_i)$ ranges from
+$1.45$ (subject 3) to $5.24$ (subject 5). The sweep is therefore
+parameterised as a \emph{multiplier} of each subject's own anchor,
+$\{1.0, 1.5, 2.5, 4.0\} \times B_{\mathrm{iid},i}$, where $1.0$ is
+exactly i.i.d.\ for every subject.
+
+An earlier version used a single global $B \in \{1.8, 3.0, 5.0, 8.0\}$.
+That was a different experimental condition for each subject --- for
+subject 5 it ran from $0.34\times$ to $1.53\times$ that subject's i.i.d.\
+point, i.e.\ mostly \emph{anti}-clustered --- and its two lowest values
+were infeasible: \eqref{eq:burst} requires $B \geq \pi/(1-\pi)$, which is
+$4.24$ for subject 5, and below it $p_{r \to d}$ exceeds 1, is clipped,
+and the chain's error rate silently departs from the measured value by up
+to $0.17$. The construction now refuses such values rather than clipping
+them. Section~\ref{sec:burstresults} reports what the corrected sweep can
+and cannot answer.
+
+\subsection{From four discrete classes to a continuous command}
+\label{sec:modality}
+
+This is the most consequential modelling decision in the project and it
+deserves to be stated in the open rather than buried.
+
+A real four-class motor-imagery BCI emits one of four discrete symbols
+every couple of seconds. The loop analysed in Section~\ref{sec:math},
+by contrast, is a continuous linear loop --- it must be, for a
+characteristic equation to exist at all. We resolve this by making
+$\ubci$ the \emph{continuous} delayed-PD command, and using the real
+decoder to supply three things that are genuinely measured:
+
+\begin{itemize}
+\item the calibrated posterior $c(t)$ that drives $\alpha$;
+\item the \emph{timing} of errors, through the fitted Markov chain, and
+      the latency with which commands arrive;
+\item the \emph{geometry} of errors --- while degraded, the command is
+      rotated toward the class that the subject's own confusion matrix
+      says they are confused with, drawn with the diagonal removed and
+      rows renormalised.
+\end{itemize}
+
+The consequence is favourable for the analysis and unfavourable for
+realism, and both halves must be said. Favourably: the command value
+is continuous, as the linear analysis of Section~\ref{sec:math}
+requires. This does \emph{not} make the simulated loop identical to the
+analysed one: Section~\ref{sec:delaytruth} shows that its timing and its
+structure differ, and that the analytic boundary does not transfer.
+Unfavourably: the simulated channel is smoother than a
+real four-class BCI, whose output is a step function on a four-point
+alphabet. The error \emph{rate}, \emph{timing} and \emph{confusion
+structure} are measured; the error \emph{waveform} is not. We return to
+this in Section~\ref{sec:limits}.
+
+% =====================================================================
+\section{Plant Models}
+\label{sec:plants}
+% =====================================================================
+
+Two plants share one arbitration layer. Both expose the same interface
+(\texttt{reset}, \texttt{step}, \texttt{observation},
+\texttt{command\_from\_intent}), so a controller written against one
+drives the other unchanged.
+
+\subsection{Plant A: the double integrator}
+
+Per axis, with velocity damping $d$,
+
+\begin{equation}
+\dot p = v, \qquad \dot v = u - d\,v,
+\label{eq:di}
+\end{equation}
+
+state $[p_x, p_y, v_x, v_y]$, input $u \in \mathbb{R}^2$ saturated at
+$6$\,m/s$^2$. This is the analytically tractable plant, and it exists so
+that Section~\ref{sec:math} has a loop it can solve exactly.
+
+The discrete update is the \emph{exact} zero-order-hold solution,
+obtained from the augmented matrix exponential
+
+\begin{equation}
+\begin{bmatrix} A_d & B_d \\ 0 & I \end{bmatrix}
+= \exp\!\left(
+\begin{bmatrix} A & B \\ 0 & 0\end{bmatrix} h \right),
+\qquad
+A = \begin{bmatrix} 0 & 1 \\ 0 & -d\end{bmatrix},
+\quad
+B = \begin{bmatrix} 0 \\ 1 \end{bmatrix}.
+\label{eq:zoh}
+\end{equation}
+
+Using the exact solution rather than a numerical integrator has three
+benefits: the $d \to 0$ limit needs no special case, there is no
+integration error at any step size, and the update is testable in ways
+an approximate one is not. It is verified against a $200{,}000$-step
+explicit integration for $d \in \{0, 0.3, 1, 2.5\}$ at three step sizes;
+by the identity that two half-steps equal one whole step to $10^{-14}$
+(true only of an exact update); and by the closed-form reduction at
+$d = 0$ to $c_1 = h$, $c_2 = h^2/2$.
+
+\subsection{Plant B: the unicycle wheelchair}
+
+The headline demonstration plant is a differential-drive chair with
+first-order motor lag:
+
+\begin{equation}
+\begin{aligned}
+\dot x &= v\cos\theta, &\qquad \dot v &= (v_{\mathrm{cmd}} - v)/\tau_v, \\
+\dot y &= v\sin\theta, &\qquad \dot\omega &= (\omega_{\mathrm{cmd}} - \omega)/\tau_\omega, \\
+\dot\theta &= \omega, & &
+\end{aligned}
+\label{eq:uni}
+\end{equation}
+
+state $[x, y, \theta, v, \omega]$, input $[v_{\mathrm{cmd}},
+\omega_{\mathrm{cmd}}]$, with $\tau_v = 0.30$\,s,
+$\tau_\omega = 0.20$\,s, $v \in [-0.4, 1.2]$\,m/s,
+$|\omega| \le 1.5$\,rad/s, and rate saturation at $1.0$\,m/s$^2$ and
+$3.0$\,rad/s$^2$. Collision radius is $0.35$\,m.
+
+\textbf{The lag is the point.} A wheelchair does not adopt a commanded
+velocity instantly, so a command issued now takes effect over $\tau_v$
+and $\tau_\omega$ seconds. This actuator lag adds phase lag on top of the
+decoder latency and the operator's own sensorimotor delay. It is plant
+dynamics, not transport delay: in the heading-loop model of
+Section~\ref{sec:headingloop} it appears as the $\tau_\omega\ddot\theta$
+term, while the transport delays make up $\tau$. A pure kinematic unicycle
+would delete exactly the dynamics being studied.
+
+Nonholonomy is what makes this plant interesting: the chair cannot
+translate sideways, so a lateral correction must be achieved by turning,
+which takes time it may not have. Integration is fixed-step RK4, checked
+against the three cases that do have closed forms --- straight-line
+motion ($10^{-9}$ relative), constant-curvature arcs
+$x = x_0 + (v/\omega)(\sin(\theta_0 + \omega t) - \sin\theta_0)$
+($10^{-6}$ absolute), and the first-order lag step response
+$v(t) = v_{\mathrm{cmd}}(1 - e^{-t/\tau_v})$ ($10^{-6}$, every step).
+Lateral displacement per step is below $10^{-12}$, so the nonholonomic
+constraint is verified numerically rather than merely asserted.
+
+\subsection{Intent to command, and the origin of the averaging failure}
+\label{sec:intent}
+
+Both the operator and the autonomy produce a world-frame intent vector;
+the plant converts it to its own input space:
+
+\begin{equation}
+\omega_{\mathrm{cmd}} = k_\theta\,\mathrm{wrap}(\psi - \theta),
+\qquad
+v_{\mathrm{cmd}} = \lVert \text{intent}\rVert \cdot
+\bigl(\max(\cos(\psi - \theta),\,0)\bigr)^{\,n},
+\label{eq:intent}
+\end{equation}
+
+with $\psi = \operatorname{atan2}(\text{intent}_y, \text{intent}_x)$,
+$k_\theta = 2.0$ and $n = 2$. The exponentiated cosine is a
+\emph{speed gate}: a chair pointed $90^\circ$ away from where the
+operator wants to go does not drift sideways, it stops and turns. This
+is the nonholonomic constraint biting at the command interface.
+
+Equation~\eqref{eq:intent} is also where the averaging failure is born.
+Two intents symmetric about an obstacle produce yaw commands of opposite
+sign and near-equal magnitude, so their convex blend has
+$\omega_{\mathrm{cmd}} \approx 0$ while both retain \emph{undiminished}
+forward speed. Section~\ref{sec:averaging} demonstrates the consequence.
+
+Note that arbitration is performed in the plant's input space,
+\emph{not} in a normalised intent space. Blending direction-only intents
+would renormalise the result and hide this failure behind the
+normalisation --- the blend would still point somewhere sensible. It is
+the fact that speed survives while yaw cancels that makes the failure
+physical.
+
+\subsection{Environments and geometry queries}
+
+Three occupancy-grid environments at $0.05$\,m resolution:
+\textbf{corridor} (a $12 \times 2$\,m straight corridor, where operator
+and autonomy largely agree, isolating noise and delay from
+disagreement); \textbf{doorway} (a central pillar with a passable gap on
+each side); and \textbf{cluttered} (an open $12\times10$\,m room with six
+scattered obstacles requiring several direction changes, so
+time-to-collision varies continuously and the risk term is exercised
+across its whole range rather than saturating).
+
+The doorway is constructed so that the averaging failure is
+\emph{geometrically guaranteed rather than hoped for}: the pillar spans
+$[4.6, 5.4]\times[3.2, 4.8]$ with safe gaps centred at $(5.0, 2.4)$ and
+$(5.0, 5.6)$, symmetric about the start--goal line at $y = 4.0$. The two
+locally optimal actions are therefore mirror images, and their convex
+blend points exactly at the obstacle.
+
+Two implementation decisions keep a $32{,}400$-episode budget tractable.
+Clearance is read from a \textbf{Euclidean distance transform} computed
+once per environment, making collision tests and DWA's clearance term
+$O(1)$ lookups. Ray casting is \textbf{vectorised over samples and beams
+together} --- one gather and one \texttt{argmax} instead of roughly $800$
+Python iterations per observation. Measured cost is $0.281$\,ms per
+step, $0.84$\,s per $60$\,s episode. Range readings are verified against
+analytic geometry: from the corridor mid-line a beam at angle $a$ should
+hit at $1/\sin a$, and measured ranges match at $90^\circ$, $60^\circ$
+and $30^\circ$ to within $0.08$\,m, one and a half cells.
+
+% =====================================================================
+\section{The Operator Model}
+\label{sec:operator}
+% =====================================================================
+
+The human is modelled as a delayed proportional--derivative controller
+that knows the goal:
+
+\begin{equation}
+\text{intent}(t) = K_p\bigl(g - p(t-\tau_h)\bigr) - K_d\,v(t-\tau_h),
+\qquad K_p = 4.0,\; K_d = 2.0,\; \tau_h = 0.20\,\mathrm{s}.
+\label{eq:operator}
+\end{equation}
+
+The intent is emitted as a world-frame vector, and the plant converts it
+through \eqref{eq:intent} using \emph{the same delayed state} --- a
+human acts on the world as they last saw it, not on the world as it is.
+
+The operator's \emph{intent} is never corrupted; all corruption lives in
+the channel. That separation is deliberate, but it has a consequence that must be
+stated: the operator model has \emph{no obstacle term}. Its intent always
+points at the goal, so in the doorway (pillar on the start--goal line)
+and in the cluttered room a perfectly decoded command still drives into
+an obstacle. In the main grid, \vmanual{} fails in all $110$ doorway and
+cluttered episodes in which the decoder made no error at all
+(Figure~\ref{fig:paths} shows one of them). Degradation observed
+downstream is therefore attributable to transmission \emph{and} to an
+obstacle-blind operator, not to transmission alone
+(Section~\ref{sec:operatorlimits}).
+
+\subsection{The transport delay, and a trap worth documenting}
+
+Transport delay is implemented as a ring buffer of exactly $n =
+\tau_h/dt$ slots with strict \textbf{read-before-write}. At step $k$ the
+slot about to be overwritten, $k \bmod n$, still holds the value written
+at step $k - n$; read it first, then overwrite:
+
+\begin{verbatim}
+    idx = k % n
+    out = buf[idx]        # written at step k - n
+    buf[idx] = value      # ... now becomes step k
+    k += 1
+    return out
+\end{verbatim}
+
+There are three ways to get this wrong and all three are silent:
+
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Implementation & Actual delay \\
+\midrule
+ring of $n+1$ slots, read-before-write & $n+1$ steps \\
+\texttt{deque(maxlen=n)}, append-then-read & $n-1$ steps \\
+unfilled deque, append-then-read & \textbf{0 steps} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The last is the dangerous one: no crash, no visibly wrong trajectory,
+and the entire phenomenon under study quietly deleted. The regression
+test drives a ramp through the buffer and asserts
+$\text{delayed}[k] = \max(k-n, 0)$ \emph{exactly} for
+$n \in \{1,2,5,10,40\}$; a companion test asserts the returned value is
+never the value just pushed. Construction raises if $\tau_h$ is not a
+whole number of steps, rather than silently rounding the loop delay.
+
+\begin{remark}
+This trap is not hypothetical. A diagnostic accessor,
+\texttt{perceived\_state()}, originally re-read the ring slot the intent
+had just used --- by which time it held the \emph{current} sample. It
+returned the undelayed state: precisely the bug the module exists to
+prevent, reintroduced in a debugging convenience. It now caches the
+value actually returned.
+\end{remark}
+
+\subsection{The command channel}
+
+Between the operator and the arbitration layer sits the channel that
+makes this a BCI problem rather than a joystick problem. It performs, in
+order: zero-order hold at the decoder's decision rate
+($2.0$\,s nominal cue-to-cue spacing); a latency queue in which the
+newest arrival wins; and corruption while the Markov chain is in its
+degraded state, implemented as a rotation of the intent toward the
+archetype direction of the class the subject's real confusion matrix
+says they are confused with. Magnitude is preserved under rotation
+(except for the \texttt{stop} archetype, which has no direction and
+zeroes the command), so corruption changes \emph{where} the user is
+asking to go, not \emph{how hard} they are asking.
+
+Confidence is held between decisions by zero-order hold, with an
+optional age decay
+$c(t) = c_0 + (p_{\mathrm{cal}} - c_0)e^{-\mathrm{age}/\tau_c}$
+implemented but switched \emph{off} by default and evaluated only as an
+ablation --- so that the extra parameter has to earn its place rather
+than being assumed.
+
+% =====================================================================
+\section{Controller Design}
+\label{sec:control}
+% =====================================================================
+
+\subsection{The autonomous layer: LQR for the double integrator}
+\label{sec:lqr}
+
+For Plant A the autonomous law is the exact infinite-horizon LQR
+minimising
+
+\begin{equation}
+J = \int_0^\infty \Bigl( q_p\,p^2 + q_v\,v^2 + r\,u^2 \Bigr)\,dt,
+\qquad q_p = 10,\; q_v = 1,\; r = 1,
+\end{equation}
+
+per axis. With $A = \begin{bsmallmatrix}0 & 1\\ 0 & -d\end{bsmallmatrix}$,
+$B = \begin{bsmallmatrix}0\\1\end{bsmallmatrix}$ and
+$Q = \mathrm{diag}(q_p, q_v)$, the algebraic Riccati equation
+$A^{\!\top} P + PA - PBR^{-1}B^{\!\top}P + Q = 0$ with
+$P = \begin{bsmallmatrix}p_{11} & p_{12}\\ p_{12} & p_{22}\end{bsmallmatrix}$
+gives three scalar equations:
+
+\begin{align}
+\text{(1,1)}: &\quad -p_{12}^2/r + q_p = 0, \label{eq:care1}\\
+\text{(1,2)}: &\quad p_{11} - d\,p_{12} - p_{12}p_{22}/r = 0, \label{eq:care2}\\
+\text{(2,2)}: &\quad 2p_{12} - 2d\,p_{22} - p_{22}^2/r + q_v = 0. \label{eq:care3}
+\end{align}
+
+Equation~\eqref{eq:care1} gives $p_{12} = \sqrt{r q_p}$ directly, and
+\eqref{eq:care3} is a quadratic in $p_{22}$ with a unique positive root.
+With $K = R^{-1}B^{\!\top}P = [K_1, K_2]$,
+
+\begin{equation}
+\boxed{\;
+K_1 = \sqrt{\frac{q_p}{r}},
+\qquad
+K_2 = -d + \sqrt{d^2 + \frac{q_v + 2\sqrt{r q_p}}{r}}\;}
+\label{eq:lqrgains}
+\end{equation}
+
+which for $d = 1$ evaluates to
+$K_1 = \sqrt{10} = 3.1622776601683795$ and
+$K_2 = 1.885230548905366$. These reproduce a prior standalone study's
+independently verified values to twelve digits, which checks the port
+rather than merely the arithmetic. The closed loop is
+$\ddot p + (d + K_2)\dot p + K_1 p = 0$.
+
+\begin{remark}[Why the LQR carries no obstacle term]
+Section~\ref{sec:math} derives the stability boundary for this loop. A
+repulsive obstacle term would make it nonlinear and invalidate the
+derivation, so the term exists in the code but is disabled unless an
+occupancy grid is supplied, and the stability experiments supply none.
+\texttt{test\_lqr\_stays\_linear\_without\_a\_grid} asserts
+superposition holds.
+\end{remark}
+
+\subsection{The autonomous layer: DWA for the unicycle}
+\label{sec:dwa}
+
+Plant B is nonholonomic and lives among obstacles, so its autonomous
+layer is the Dynamic Window Approach. Every planning period
+($0.10$\,s, i.e.\ $10$\,Hz) we:
+
+\begin{enumerate}
+\item Construct the \emph{dynamic window} --- the set of
+      $(v, \omega)$ reachable within the reachability horizon
+      $\Delta t_w = 0.25$\,s given the acceleration limits, sampled on a
+      $7 \times 21 = 147$ point grid.
+\item Predict each candidate forward for $1.5$\,s. Under constant
+      $(v,\omega)$ the unicycle traces exactly the circular arc verified
+      in Section~\ref{sec:plants}, so all $147$ candidates are evaluated
+      as one vectorised closed-form expression rather than $11{,}025$
+      integration steps.
+\item Discard candidates whose minimum clearance falls below
+      $\rho + \delta$, with $\rho = 0.35$\,m the collision radius and
+      $\delta = 0.05$\,m a safety margin.
+\item Score the survivors on
+      \[
+        J = w_h\,\Phi_{\text{progress}}
+          + w_c\,\frac{\min(\text{clearance},\, c_{\max})}{c_{\max}}
+          + w_v\,v ,
+      \]
+      with $(w_h, w_c, w_v) = (0.8, 0.4, 0.2)$ and $c_{\max} = 2$\,m.
+\end{enumerate}
+
+\begin{remark}[Why the window must not be sized by the simulation step]
+The dynamic window is the set of velocities reachable within one
+\emph{planning} interval, which is not the simulation step. Sizing it by
+$dt = 0.02$\,s yields a window of $\pm 0.02$\,m/s: every candidate is
+then near-identical and the planner is paralysed. This was observed
+directly --- DWA returned $[0.02, -0.06]$, creeping forward at $2$\,cm/s
+because it could never propose anything faster. Separating
+$\Delta t_w = 0.25$\,s (reachability) from $0.10$\,s (replan rate) from
+$0.02$\,s (integration) gives a usable window,
+$v \in [-0.25, 0.25]$, $\omega \in [-0.75, 0.75]$, with $131$ of $147$
+candidates feasible.
+\end{remark}
+
+\begin{remark}[The clearance cap is load-bearing]
+Without saturating the clearance term, DWA maximises distance from every
+obstacle and refuses to enter a doorway at all, because hugging open
+space always outscores passing through a gap.
+\end{remark}
+
+\subsubsection*{The navigation field: eliminating local minima}
+
+The heading term $\Phi_{\text{progress}}$ deserves particular attention,
+because the obvious choice for it is wrong in a way that a unit test
+cannot catch.
+
+Scoring ``how well does this trajectory end up pointing at the goal''
+using the straight-line direction to the goal makes DWA a greedy local
+optimiser on a potential field with local minima. In the doorway
+environment the pillar sits symmetrically astride the start--goal line,
+so left and right score \emph{identically} and the planner stalls. This
+was not caught until the full experiment grid ran and reported
+\vauto{} --- the baseline that was supposed to be trivially safe ---
+at \textbf{0\% success}.
+
+The fix is to score progress down a \emph{geodesic navigation field}
+$\Phi$, computed once per environment by Dijkstra's algorithm on the
+8-connected graph of free cells with the goal as source. $\Phi(c)$ is
+the true geodesic distance to the goal through free space, and it has
+the property that \emph{every} free cell has a strictly downhill
+neighbour --- so it has no local minima by construction. The candidate
+score becomes the reduction in $\Phi$ along the predicted arc.
+
+The property is now asserted directly by
+\texttt{test\_navigation\_field\_has\_no\_local\_minimum}, which samples
+free cells and requires each to have a strictly lower neighbour, so a
+future change to the geometry or the inflation radius cannot silently
+reintroduce the stall.
+
+\subsection{The situational risk signal}
+\label{sec:risk}
+
+The adaptive arbitrator needs a scalar $r \in [0,1]$ describing how
+dangerous the present situation is, \emph{independently} of how much the
+decoder is trusted. The two signals answer different questions, and this
+distinction is the conceptual core of the project:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+confidence $c$ & \emph{``is this command what the user meant?''} \\
+risk $r$       & \emph{``does it matter if it isn't?''} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A wrong command in the middle of an empty corridor is harmless; the same
+command half a metre from a door frame is a collision. Risk is derived
+from the time-to-collision $\ttc$ of the \emph{currently commanded}
+trajectory through a saturating ramp,
+
+\begin{equation}
+r_{\mathrm{raw}} =
+\begin{cases}
+0, & \ttc \ge H,\\[2pt]
+\dfrac{H - \ttc}{H - F}, & F < \ttc < H,\\[6pt]
+1, & \ttc \le F,
+\end{cases}
+\qquad H = 3.0\,\mathrm{s},\; F = 0.5\,\mathrm{s},
+\label{eq:risk}
+\end{equation}
+
+followed by a first-order lag with $\tau_r = 0.30$\,s:
+$r_{k+1} = r_k + \bigl(1 - e^{-dt/\tau_r}\bigr)(r_{\mathrm{raw}} - r_k)$.
+
+The lag is not cosmetic. Because $r$ enters $\alpha$, and $\alpha$
+multiplies a feedback path, a risk signal that jumps makes the closed
+loop time-varying \emph{at the same timescale as the dynamics it
+regulates}, and the frozen-$\alpha$ stability boundary of
+Section~\ref{sec:math} stops being a meaningful reference. The lag removes
+such jumps. It does not, however, make $r$ slow compared with the loop:
+$\tau_r = 0.30$\,s is no longer than the loop's own dominant time
+constants (about $0.3$--$0.85$\,s across the authority range for the
+delay-free linear models of Section~\ref{sec:math}) and much shorter
+than their oscillation periods (about $2.5$\,s or longer; at low
+authority the heading-loop model does not oscillate at all). The lag
+therefore prevents chatter but does not by itself justify treating
+$\alpha$ as frozen; Section~\ref{sec:proofscope} returns to this.
+
+\subsection{The six arbitration variants}
+
+Table~\ref{tab:variants} lists the policies under comparison. They are
+chosen so that each isolates one question: two are baselines that bound
+the achievable range, one is the naive approach, one removes the risk
+term, one is the proposal, and one abandons blending altogether.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llp{7.2cm}@{}}
+\toprule
+Variant & Rule & Role in the experiment \\
+\midrule
+\vmanual  & $\alpha = 1$ & Lower baseline: the user drives. \\
+\vauto    & $\alpha = 0$ & Upper baseline: the autonomy drives. \\
+\vfixed   & $\alpha = \text{const}$, swept & Naive convex blending; must
+            exhibit the averaging failure. \\
+\vconf    & $\alpha = c$ & Confidence without situational awareness;
+            exists so the risk term has something to be measured against. \\
+\vadapt   & $\alpha = c\,(1-r)$, gated & The proposal. \\
+\vsafety  & projection, not blending & Minimum intervention. \\
+\bottomrule
+\end{tabular}
+\caption{The six arbitration policies. Five are convex blends of two
+commands; the sixth is not, and that difference is the point of the
+comparison.}
+\label{tab:variants}
+\end{table}
+
+\subsubsection*{The adaptive law}
+
+The raw target is the product $c\,(1-r)$: authority is granted only when
+the command is \emph{both} trusted (high $c$) \emph{and} safe to obey
+(low $r$), and it is withdrawn when \emph{either} condition fails. When
+the gate below is open the target is $c\,(1-r)$; when it is closed the
+target is $\alpha_{\min} = 0$. Three
+pieces of conditioning sit on top of the product:
+
+\begin{align}
+\text{Schmitt gate:}\quad
+&\text{open if } c(1-r) > 0.60;\quad \text{close if } c(1-r) < 0.40;
+\quad \text{hold in between}, \\
+\text{Low-pass:}\quad
+&\alpha^{-} \leftarrow \alpha + \bigl(1 - e^{-dt/\tau_s}\bigr)
+   (\alpha_{\mathrm{target}} - \alpha),
+   \qquad \tau_s = 0.25\,\mathrm{s},\\
+\text{Rate limit:}\quad
+&|\Delta \alpha| \le \rho\,dt, \qquad \rho = 2.0\,\mathrm{s}^{-1}.
+\end{align}
+
+The hysteresis band exists because a raw value hovering near a single
+threshold would make authority chatter at the control rate. That is
+physically absurd for a wheelchair, and --- more importantly for this
+report --- it would make the frozen-$\alpha$ analysis of
+Section~\ref{sec:math} meaningless.
+\texttt{test\_adaptive\_hysteresis\_prevents\_chatter} drives values
+through the band and asserts no toggling.
+
+\subsubsection*{The safety filter: projecting instead of averaging}
+
+The sixth variant does not blend at all. Below the intervention
+threshold ($\ttc > 1.5$\,s) it returns $\ubci$ \emph{unchanged}, so it is
+completely transparent when nothing is wrong. Above the threshold it
+solves
+
+\begin{equation}
+u^{\star} = \arg\min_{u \in \mathcal{U}_{\mathrm{safe}}}
+\;\left(\frac{v - v_{\mathrm{bci}}}{v_{\max}}\right)^{2}
++ \left(\frac{\omega - \omega_{\mathrm{bci}}}{\omega_{\max}}\right)^{2},
+\label{eq:filter}
+\end{equation}
+
+where $\mathcal{U}_{\mathrm{safe}}$ is the feasible set of the dynamic
+window. The result is therefore always \emph{some command the user could
+have given}, never a compromise between two incompatible ones. The
+metric is limit-normalised because m/s and rad/s are not comparable, and
+an unnormalised norm would silently weight whichever axis happens to
+carry larger numbers.
+
+When every candidate is infeasible the planner degrades gracefully to
+the maximum-clearance option rather than returning nothing, so the
+filter always has a safe set to project onto.
+
+\subsubsection*{Effective authority, for comparability}
+
+The safety filter has no $\alpha$ of its own, but the ablations need
+\texttt{mean\_alpha} to be comparable across all six variants. It
+therefore reports the least-squares projection of its realised command
+onto the segment between $\uauto$ and $\ubci$:
+
+\begin{equation}
+\alpha_{\mathrm{eff}} = \mathrm{clip}\!\left(
+\frac{(u - \uauto)^{\!\top}(\ubci - \uauto)}
+     {\lVert \ubci - \uauto\rVert^2}, \; 0,\, 1\right),
+\label{eq:alphaeff}
+\end{equation}
+
+that is, the blend weight that \emph{would} have produced the same
+command.
+
+\subsection{A finding: some states are unrecoverable}
+\label{sec:unrecoverable}
+
+Two tests written during Stage 5 failed, and investigation showed the
+tests' premises were wrong rather than the code. The finding is
+quantitative and it justifies a design decision:
+
+\begin{quote}
+At $0.6$\,m from a $1.6$\,m-wide pillar travelling at $0.8$\,m/s, the
+tightest turn available inside the dynamic window (slowest speed
+$0.8 - 0.25 = 0.55$\,m/s, fastest yaw rate $0.75$\,rad/s) has radius
+$0.55/0.75 = 0.73$\,m; after $0.6$\,m of forward travel such an arc has
+moved only about $0.3$\,m sideways, far short of the $\approx 1.2$\,m
+needed to clear the pillar.
+\textbf{All 147 candidates are infeasible.} The chair is committed
+before it arrives.
+\end{quote}
+
+This is the quantitative justification for triggering the safety filter
+on \emph{time}-to-collision ($1.5$\,s ahead) rather than on proximity: by
+the time proximity is alarming, intervention is already too late. It
+may also contribute to the safety filter's residual collisions
+(Section~\ref{sec:negative}), although that link was not measured.
+
+% =====================================================================
+\section[Mathematical Analysis: the Transport-Delay Stability Boundary]{Mathematical Analysis:\\ the Transport-Delay Stability Boundary}
+\label{sec:math}
+% =====================================================================
+
+This section derives $\tau_{\max}(\alpha)$ --- the largest loop delay
+the blended closed loop tolerates at a given authority --- exactly, with
+no approximation of the delay.
+
+\subsection{The characteristic equation}
+
+Take one axis of the double integrator \eqref{eq:di} in error
+coordinates, with the autonomous LQR acting on the \emph{true} state and
+the operator's PD acting through the total loop delay $\tau$. Blending
+with authority $\alpha$ per \eqref{eq:arb}:
+
+\begin{equation}
+\ddot p + d\,\dot p
++ (1-\alpha)\bigl(K_1 p + K_2 \dot p\bigr)
++ \alpha\bigl(K_p\, p(t-\tau) + K_d\, \dot p(t-\tau)\bigr) = 0 .
+\label{eq:dde}
+\end{equation}
+
+Laplace transforming, and using
+$\mathcal{L}\{p(t-\tau)\} = e^{-\tau s}P(s)$, gives the characteristic
+equation
+
+\begin{equation}
+\boxed{\;
+\Delta(s) \;=\; s^{2} + d\,s + (1-\alpha)(K_1 + K_2 s)
++ \alpha (K_p + K_d s)\,e^{-\tau s} \;=\; 0. \;}
+\label{eq:chareq}
+\end{equation}
+
+The factor $e^{-\tau s}$ makes \eqref{eq:chareq} \emph{transcendental}:
+it has infinitely many roots and no closed-form root expression. What we
+can do exactly is find where a root \emph{crosses} the imaginary axis,
+because the delay-free loop ($\tau = 0$) is stable for every
+$\alpha \in [0,1]$ --- all its polynomial coefficients are positive ---
+and roots move continuously in $\tau$. The first crossing encountered as
+$\tau$ grows from zero is therefore the boundary.
+
+\subsection{Substituting \texorpdfstring{$s = j\omega$}{s = j omega}}
+
+Put $s = j\omega$ with $\omega > 0$ and write $\theta = \omega\tau$.
+Define
+
+\begin{equation}
+A = (1-\alpha)K_1 - \omega^{2},
+\quad
+B = \bigl(d + (1-\alpha)K_2\bigr)\omega,
+\quad
+C = \alpha K_p,
+\quad
+D = \alpha K_d \omega .
+\label{eq:ABCD}
+\end{equation}
+
+Since $e^{-j\theta} = \cos\theta - j\sin\theta$,
+equation~\eqref{eq:chareq} becomes
+$(A + jB) + (C + jD)(\cos\theta - j\sin\theta) = 0$, and expanding the
+product,
+
+\begin{align}
+\text{Real:}&\qquad A + C\cos\theta + D\sin\theta = 0, \label{eq:real}\\
+\text{Imag:}&\qquad B + D\cos\theta - C\sin\theta = 0. \label{eq:imag}
+\end{align}
+
+\subsection{Solving for \texorpdfstring{$\cos\theta$ and $\sin\theta$}{cos theta and sin theta}}
+
+Equations \eqref{eq:real}--\eqref{eq:imag} are linear in
+$(\cos\theta, \sin\theta)$:
+
+\begin{equation}
+\begin{bmatrix} C & D \\ D & -C \end{bmatrix}
+\begin{bmatrix} \cos\theta \\ \sin\theta \end{bmatrix}
+=
+\begin{bmatrix} -A \\ -B \end{bmatrix},
+\qquad
+\det = -(C^2 + D^2).
+\end{equation}
+
+By Cramer's rule, provided $C^2 + D^2 \neq 0$ (i.e.\ $\alpha > 0$),
+
+\begin{equation}
+\cos\theta = -\frac{AC + BD}{C^{2}+D^{2}},
+\qquad
+\sin\theta = \frac{BC - AD}{C^{2}+D^{2}}.
+\label{eq:cossin}
+\end{equation}
+
+\subsection{The delay cancels}
+
+Now impose the Pythagorean identity. Substituting \eqref{eq:cossin} into
+$\cos^2\theta + \sin^2\theta = 1$ and clearing the denominator:
+
+\begin{align}
+(AC + BD)^2 + (BC - AD)^2 &= (C^2 + D^2)^2 \nonumber\\
+A^2C^2 + \cancel{2ABCD} + B^2D^2 + B^2C^2 - \cancel{2ABCD} + A^2D^2
+&= (C^2+D^2)^2 \nonumber\\
+(A^2 + B^2)(C^2 + D^2) &= (C^2+D^2)^2,
+\end{align}
+
+and dividing by $C^2 + D^2 > 0$ leaves the \emph{magnitude balance}
+
+\begin{equation}
+\boxed{\;A^{2} + B^{2} \;=\; C^{2} + D^{2}.\;}
+\label{eq:magbalance}
+\end{equation}
+
+\begin{remark}[The interpretation]
+The cross terms cancel identically, and with them every appearance of
+$\tau$. This is not an algebraic accident but a statement of what a pure
+transport delay does: $e^{-j\omega\tau}$ has unit modulus, so the delay
+can \emph{rotate} the operator's contribution in the complex plane but
+can never \emph{rescale} it. Whether a crossing exists at all is
+therefore a question about magnitudes alone, and the magnitudes also fix
+the crossing frequencies $\omega_i$. The delay only decides \emph{at
+which delays}, $\tau_i + 2\pi k/\omega_i$, the phase lines up so that a
+root sits on the axis.
+\end{remark}
+
+\subsection{A quadratic in \texorpdfstring{$\omega^2$}{omega squared}}
+
+Introduce
+\begin{equation}
+P_1 = (1-\alpha)K_1, \quad
+P_2 = d + (1-\alpha)K_2, \quad
+Q_1 = \alpha K_p, \quad
+Q_2 = \alpha K_d ,
+\end{equation}
+so that $A = P_1 - \omega^2$, $B = P_2\omega$, $C = Q_1$,
+$D = Q_2\omega$. Expanding \eqref{eq:magbalance}:
+
+\begin{equation}
+\omega^{4} - 2P_1\omega^{2} + P_1^{2} + P_2^{2}\omega^{2}
+= Q_1^{2} + Q_2^{2}\omega^{2},
+\end{equation}
+
+and collecting in $X = \omega^{2}$,
+
+\begin{equation}
+\boxed{\;
+X^{2} + \underbrace{\bigl(P_2^{2} - Q_2^{2} - 2P_1\bigr)}_{b}\,X
++ \underbrace{\bigl(P_1^{2} - Q_1^{2}\bigr)}_{c} \;=\; 0. \;}
+\label{eq:quadratic}
+\end{equation}
+
+Here $b$ and $c$ are just the quadratic's coefficients; $c$ is
+unrelated to the decoder confidence $c$ of Section~\ref{sec:control}.
+Every strictly positive real root $X_i$ of \eqref{eq:quadratic} gives a
+crossing frequency $\omega_i = \sqrt{X_i}$. This is the entire
+derivation: an infinite-dimensional stability question has been reduced
+to a scalar quadratic.
+
+\subsection{Recovering the delay}
+
+For each crossing frequency, back-substitute into \eqref{eq:cossin} and
+recover the phase:
+
+\begin{equation}
+\theta_i = \operatorname{atan2}\bigl(\sin\theta_i, \cos\theta_i\bigr)
+\;\;\text{wrapped into}\;\; [0, 2\pi),
+\qquad
+\tau_i = \frac{\theta_i}{\omega_i}.
+\label{eq:taui}
+\end{equation}
+
+The wrap into $[0, 2\pi)$ is what selects the \emph{smallest positive}
+delay at which that particular frequency crosses; larger delays
+$\tau_i + 2\pi k/\omega_i$ also cross but are not the first. Since the
+loop is stable at $\tau = 0$, the boundary is the first crossing that
+moves roots \emph{into} the right half-plane (Section~\ref{sec:direction}):
+
+\begin{equation}
+\boxed{\;\tau_{\max}(\alpha) = \min_{i\,:\,F'(X_i) > 0} \tau_i,\;}
+\qquad\text{and}\qquad
+\tau_{\max}(\alpha) = \infty
+\text{ if \eqref{eq:quadratic} has no positive real root.}
+\label{eq:taumax}
+\end{equation}
+
+\subsection{Direction of crossing, and stability switches}
+\label{sec:direction}
+
+A root pair can cross the imaginary axis in either direction, so a
+crossing is not automatically a loss of stability. The direction is
+settled by a standard result for characteristic equations of the form
+$\mathcal{P}(s) + \mathcal{Q}(s)\,e^{-s\tau} = 0$~\cite{cooke1986zeroes}.
+Here $\mathcal{P}(s) = s^2 + P_2 s + P_1$ is the undelayed part of
+\eqref{eq:chareq} and $\mathcal{Q}(s) = Q_1 + Q_2 s$ the delayed part
+(calligraphic letters, to avoid a clash with the Laplace transform
+$P(s)$ of $p$ used in deriving \eqref{eq:chareq}), and the left-hand side of \eqref{eq:quadratic} is exactly
+$F(\omega^2) = |\mathcal{P}(j\omega)|^2 - |\mathcal{Q}(j\omega)|^2$,
+where $F(X) = X^2 + bX + c$. At a crossing $s = j\omega_i$,
+
+\begin{equation}
+\operatorname{sign}\,\operatorname{Re}\,\frac{ds}{d\tau}\bigg|_{s = j\omega_i}
+= \operatorname{sign} F'(X_i)
+= \operatorname{sign}\,(2X_i + b).
+\label{eq:direction}
+\end{equation}
+
+The larger root of \eqref{eq:quadratic} has $2X + b = \sqrt{b^2 - 4c} > 0$,
+so it always \emph{destabilises}; a smaller positive root, which exists
+only when $c > 0$ and $b < 0$, has $2X + b < 0$ and moves roots back to
+the left. Two consequences follow for the gains of this study.
+
+\begin{itemize}
+\item For $\alpha \ge \astar$ we have $c \le 0$, so
+      \eqref{eq:quadratic} has exactly one strictly positive root and
+      every crossing is destabilising. Each adds a pair of right-half-plane
+      roots, so the loop is stable \emph{if and only if}
+      $\tau < \tau_{\max}(\alpha)$. Below $\alpha = 0.441425$ there is no
+      crossing at all (Section~\ref{sec:alphastar}). So, outside the thin
+      band $0.441425 \le \alpha < \astar$ described next, ``stable if
+      and only if $\tau < \tau_{\max}(\alpha)$'' holds at every
+      authority.
+\item In the thin band $0.441425 \le \alpha < \astar = 0.441518$, both
+      roots are positive (at the left end they coincide). The destabilising crossing still comes first,
+      so $\tau_{\max}$ is unchanged, but \emph{stability switches} occur
+      at larger delays. At $\alpha = 0.44146$, for example, the loop
+      loses stability at $\tau = 10.54$\,s, regains it at $22.23$\,s and
+      loses it again at $32.96$\,s. An independent computation of the
+      rightmost characteristic root (Chebyshev pseudospectral
+      discretisation of the delay equation) agrees with this sequence.
+      The band is less than $10^{-4}$ wide and no result in this report
+      depends on it.
+\end{itemize}
+
+Because the loop is stable at $\tau = 0$, there are no right-half-plane
+roots for a stabilising crossing to remove, so the first crossing is
+necessarily destabilising and \eqref{eq:taumax} always equals the
+minimum over all crossings; the direction test matters only for what
+happens at larger delays. All figures in this subsection are reproduced by
+\texttt{python -m scripts.check\_crossing\_direction}.
+
+\subsection{The delay-independent region and when \texorpdfstring{$\astar$}{alpha*} is exact}
+\label{sec:alphastar}
+
+Equation~\eqref{eq:quadratic} has no positive real root --- and the loop
+is then stable at \emph{arbitrarily large} delay --- precisely when
+either $c > 0$ and $b \ge 0$, or $b^2 < 4c$ (no real roots), or $c = 0$
+and $b \ge 0$. In every case $c \ge 0$ is necessary, and since
+$P_1, Q_1 \ge 0$,
+
+\begin{equation}
+c > 0
+\iff P_1 > Q_1
+\iff (1-\alpha)K_1 > \alpha K_p
+\iff \alpha < \astar \equiv \frac{K_1}{K_1 + K_p}.
+\label{eq:alphastar}
+\end{equation}
+
+So $\astar$ always \emph{upper-bounds} the delay-independent region.
+Whether it is also the true boundary has a clean answer.
+
+\begin{proposition}[Exactness criterion]
+$\astar$ is the exact supremum of the delay-independent authorities if
+and only if $b(\astar) \ge 0$.
+\end{proposition}
+
+\begin{proof}
+At $\alpha = \astar$ the constant term vanishes, $c = 0$, so
+\eqref{eq:quadratic} factors as $X(X + b) = 0$ with roots
+$\{0,\, -b\}$. If $b(\astar) \ge 0$ then $-b \le 0$ and there is no
+strictly positive root, so the loop is delay-independent \emph{at}
+$\astar$ and, by continuity, on an interval just below it; since $c < 0$
+(a crossing exists) for every $\alpha > \astar$, $\astar$ is the
+supremum. If $b(\astar) < 0$ then $-b > 0$ is a positive root, a
+crossing exists at $\astar$, and the true boundary lies strictly below.
+\end{proof}
+
+Written out in the gains alone, the criterion is
+
+\begin{equation}
+\left(d + \frac{K_2 K_p}{K_1 + K_p}\right)^{2}
+\;\ge\;
+\left(\frac{K_d K_1}{K_1 + K_p}\right)^{2}
++ \frac{2 K_1 K_p}{K_1 + K_p}.
+\label{eq:criterion}
+\end{equation}
+
+\begin{remark}[This corrects an earlier claim of ours]
+We initially asserted that $\astar$ was exact. A $20{,}001$-point scan
+of the authority axis disproved it, and the criterion
+\eqref{eq:criterion} is the corrected result. For the gains of this
+study, $b(\astar) = -0.0976 < 0$, so $\astar = 0.4415184$ is an
+\emph{upper bound}; the true delay-independent boundary, located by
+bisection on the exact predicate, is $0.4414251$. The bound
+over-states the safe region by $0.021\%$ --- small, but the difference
+between a bound and a boundary is not a matter of size.
+
+The boundary is also approached in an unexpected way. As $\alpha$
+decreases toward $0.441425$ from above, $\tau_{\max}(\alpha)$ does
+\emph{not} grow without limit: it rises steeply to about $13.6$\,s and
+then jumps to $\infty$. The jump happens because, at that authority, the
+two positive roots of \eqref{eq:quadratic} merge ($b^2 = 4c$) and
+disappear, so no crossing frequency is left. A plot whose delay axis
+stops at a few seconds (Figure~\ref{fig:stability}) makes this look like
+a vertical asymptote; it is a finite jump.
+\end{remark}
+
+\subsection{The unicycle heading loop}
+\label{sec:headingloop}
+
+The analysis above is for the double integrator. The unicycle's heading
+channel can be brought into the same form. Linearising about steady
+forward motion, and using the yaw-rate lag from \eqref{eq:uni}, the
+heading loop is
+
+\begin{equation}
+\tau_\omega\,\ddot\theta + \dot\theta = \omega_{\mathrm{cmd}} .
+\label{eq:heading}
+\end{equation}
+
+Dividing through by $\tau_\omega$ puts it in exactly the form of
+\eqref{eq:di} with effective damping $d = 1/\tau_\omega$ and every gain
+scaled by $1/\tau_\omega$, so the identical machinery applies. With
+$\tau_\omega = 0.20$\,s this gives $\astar = 0.6126$ and
+$\tau_{\max}(1) = 0.647$\,s. For the heading loop the operator
+derivative gain is $K_d = 0$ and criterion \eqref{eq:criterion} gives
+$b(\astar) = 62.6 > 0$ (mainly because the effective damping
+$d = 1/\tau_\omega = 5$ is large), so \textbf{$\astar$ is exact} there.
+For this purpose the autonomous yaw law is represented by the
+double-integrator LQR gains $K_1, K_2$ acting on heading error and yaw
+rate. That is a surrogate --- the simulated chair's autonomy is DWA,
+which has no linear gains --- and $\astar = 0.6126$ depends directly on
+that choice.
+
+We are explicit about the scope of this result in
+Section~\ref{sec:limits}: it is a linearisation of one channel of the
+unicycle about steady motion, and it does not cover the coupled
+nonlinear $(v, \theta)$ dynamics, the speed gate \eqref{eq:intent}, or
+obstacle interaction.
+
+\subsection{The Pad\'e(2,2) comparison}
+\label{sec:pade}
+
+A common engineering shortcut replaces the delay with a rational
+approximation,
+
+\begin{equation}
+e^{-\tau s} \;\approx\;
+\frac{1 - \tau s/2 + (\tau s)^{2}/12}{1 + \tau s/2 + (\tau s)^{2}/12},
+\label{eq:pade}
+\end{equation}
+
+turning \eqref{eq:chareq} into a quartic polynomial whose stability can
+be assessed by ordinary root finding. Since the exact transcendental
+solution is available here, Pad\'e is reported as a \emph{comparison},
+not used as the method. Its margin is found by bisection on the largest
+real part of the quartic's roots. Results are in
+Table~\ref{tab:pade}; the approximation is consistently
+\emph{optimistic}, which is the dangerous direction for a stability
+bound.
+
+\subsection{Direct DDE integration}
+\label{sec:ddeint}
+
+For verification we integrate \eqref{eq:dde} directly, with no reference
+to the algebra above. Writing $z = p$, $w = \dot p$,
+$c_z = (1-\alpha)K_1$, $c_w = d + (1-\alpha)K_2$:
+
+\begin{equation}
+\dot z = w,
+\qquad
+\dot w = -c_w w - c_z z - \alpha\bigl(K_p z(t-\tau) + K_d w(t-\tau)\bigr),
+\end{equation}
+
+with constant history $z(t) = z_0$, $w(t) = 0$ for $t < 0$.
+Integration is fixed-step RK4 at $h = 2\times10^{-3}$\,s over a $60$\,s
+horizon. The delayed state is required at $t - \tau$, which in general
+falls \emph{between} grid points; we obtain it by cubic Hermite
+interpolation,
+
+\begin{equation}
+y(s) = (2s^3 - 3s^2 + 1)y_k + (s^3 - 2s^2 + s)h\,\dot y_k
+     + (-2s^3 + 3s^2)y_{k+1} + (s^3 - s^2)h\,\dot y_{k+1},
+\label{eq:hermite}
+\end{equation}
+
+which is fourth-order between grid points and, importantly, means
+$\tau$ need not be an integer multiple of $h$. (Derivative jumps from
+the constant initial history limit the global order, but the error at
+$h = 2\times10^{-3}$ is about $10^{-7}$, far below every tolerance
+used.) A scheme that rounded
+$\tau$ to the grid would quantise the very quantity being measured.
+
+The dominant growth rate is estimated by comparing the response envelope
+over two late windows,
+
+\begin{equation}
+\lambda = \frac{\ln E_{\text{late}} - \ln E_{\text{mid}}}
+               {\bar t_{\text{late}} - \bar t_{\text{mid}}},
+\qquad
+E_{\text{mid}} = \max_{t \in [0.4T,\,0.6T]} |z(t)|,
+\quad
+E_{\text{late}} = \max_{t \in [0.8T,\,T]} |z(t)| ,
+\label{eq:growth}
+\end{equation}
+
+so $\lambda < 0$ means settling and $\lambda > 0$ means diverging.
+
+\subsection{DDE bisection}
+\label{sec:bisection}
+
+The third check recovers the boundary \emph{numerically}, consulting the
+analytic formula only to choose a bracket. Given $\alpha$, bracket
+$[\tau_{\mathrm{lo}}, \tau_{\mathrm{hi}}] = [10^{-3},\,
+3\tau_{\max}^{\text{analytic}}]$ and bisect on the predicate
+$\lambda(\alpha, \tau) < 0$:
+
+\begin{equation}
+\tau_{\mathrm{mid}} \leftarrow \tfrac12(\tau_{\mathrm{lo}} + \tau_{\mathrm{hi}}),
+\qquad
+\begin{cases}
+\tau_{\mathrm{lo}} \leftarrow \tau_{\mathrm{mid}} & \text{if } \lambda < 0
+\quad (\text{still stable}),\\
+\tau_{\mathrm{hi}} \leftarrow \tau_{\mathrm{mid}} & \text{otherwise},
+\end{cases}
+\end{equation}
+
+for $60$ iterations or until the bracket narrows below $10^{-5}$\,s. The
+predicate is monotone in $\tau$ near the boundary, which is what makes
+bisection valid. Each evaluation is a full $60$\,s DDE integration, so
+this check is expensive --- and it is the strongest of the three,
+because it recovers the number rather than merely testing a consequence
+of it.
+
+% =====================================================================
+\section{Simulation Architecture}
+\label{sec:sim}
+% =====================================================================
+
+\subsection{The experiment grid}
+
+The base grid is
+$6\ \text{variants} \times 9\ \text{subjects} \times
+3\ \text{environments} \times 20\ \text{seeds} = 3240$ episodes. On top
+of it:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Block & Configurations & Episodes \\
+\midrule
+Base grid & 6 variants & 3{,}240 \\
+Authority sweep & 11 values of $\alpha$ (\vfixed{} only) & 5{,}940 \\
+Burstiness sweep & 4 values of $B$, 3 variants & 6{,}480 \\
+Ablations & 5 full $+$ 1 single-variant & 16{,}740 \\
+\midrule
+\textbf{Total} & & \textbf{32{,}400} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each cell of the paired comparison therefore has
+$n = 9 \times 3 \times 20 = 540$ matched seeds. Episodes time out at
+$60$\,s; collision is terminal, so the reported collision figure is a
+\emph{rate} (fraction of episodes with a collision), not a count.
+
+Eleven quantities are logged per episode: success, collisions, time to goal,
+path-length ratio, commands issued, intervention fraction, mean
+$\alpha$, minimum time-to-collision, cross-track RMS and terminal error,
+together with the fraction of decisions that were degraded.
+
+\subsection{Computational cost and how it was reduced}
+
+The first working version of the episode loop cost $1.6$\,s per episode,
+putting the full grid at roughly $14$ hours. Two changes brought it to
+approximately $72$\,ms:
+
+\begin{enumerate}
+\item \textbf{Evaluate risk at the planning rate, not the simulation
+      rate.} Risk depends on a rollout; recomputing it at $50$\,Hz when
+      the plan itself only changes at $10$\,Hz was pure waste.
+\item \textbf{Parallelise across 18 processes.} Episodes are independent
+      by construction --- each has its own generator --- so this is
+      exact rather than approximate.
+\end{enumerate}
+
+The full Stage 6 grid now runs in about $39$ minutes. Two earlier
+optimisations were prerequisites: the closed-form arc rollout
+(Section~\ref{sec:dwa}), which replaced $11{,}025$ integration steps per
+control step with one vectorised expression, and the distance-transform
+clearance lookup (Section~\ref{sec:plants}).
+
+\subsection{Statistical treatment}
+
+Because the variant is excluded from the RNG key, every policy sees an
+identical noise realisation at a given seed, so comparisons are
+\textbf{paired}. Episode-level means are reported with $95\%$
+confidence half-widths (normal approximation) as \emph{descriptive}
+summaries only. Inferential comparisons against \vadapt{} are made at
+the level of the subject: paired differences in per-subject success,
+with percentile bootstrap intervals over the nine subjects
+(Table~\ref{tab:paired}; Section~\ref{sec:stats} explains why
+episode-level tests would be pseudoreplication). Correlations between
+per-subject success and decoder $\kappa$ are Pearson, with $n = 9$ --- a
+sample size we treat with appropriate suspicion in
+Section~\ref{sec:persubject}.
+
+% =====================================================================
+\section{Results}
+\label{sec:results}
+% =====================================================================
+
+\subsection{Headline comparison}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Variant & Success & Collisions & Time (s) & Mean $\alpha$ & Interv. & Min $\ttc$ (s)\\
+\midrule
+\vmanual  & $0.119 \pm 0.027$ & 0.881 & 9.3  & 1.000 & 0.00 & 0.23 \\
+\vauto    & $\mathbf{1.000} \pm 0.000$ & 0.000 & 10.5 & 0.000 & 0.91 & 1.26 \\
+\vfixed   & $0.161 \pm 0.031$ & 0.839 & 9.8  & 0.500 & 0.93 & 0.26 \\
+\vconf    & $0.315 \pm 0.039$ & 0.683 & 10.2 & 0.387 & 0.93 & 0.45 \\
+\vadapt   & $\mathbf{0.996} \pm 0.005$ & 0.004 & 11.7 & 0.118 & 0.91 & 1.19 \\
+\vsafety  & $0.356 \pm 0.040$ & 0.120 & 44.8 & 0.771 & 0.35 & 0.24 \\
+\bottomrule
+\end{tabular}
+\caption{Headline results over the base grid, $540$ paired seeds per
+variant. Intervals are normal-approximation $95\%$ half-widths over the
+$540$ episodes --- descriptive Monte-Carlo uncertainty only
+(Section~\ref{sec:stats}), and unreliable near $0$ and $1$. ``Time'' is
+the mean episode duration (goal, collision or $60$\,s timeout), not the
+time to goal of successful episodes. ``Interv.'' is the fraction of
+control steps on which the realised command differed from the user's.}
+\label{tab:headline}
+\end{table}
+
+Three readings of Table~\ref{tab:headline} matter.
+
+\textbf{The premise holds, with a qualification.} \vmanual{} succeeds
+in $11.9\%$ of episodes and collides in $88.1\%$, but not all of this is
+decoder error: the simulated operator ignores obstacles
+(Section~\ref{sec:operator}) and fails in the doorway and cluttered
+rooms even when every decision is correct. Only the corridor isolates
+decoder error, and there \vmanual{} succeeds in $33\%$ of episodes.
+
+\textbf{Naive blending barely helps.} \vfixed{} at $\alpha = 0.5$
+reaches $0.161$ --- four points above manual driving, for half the
+user's authority surrendered. Averaging two drivers does not average
+their competence; Section~\ref{sec:averaging} explains why.
+
+\textbf{Risk-gated authority recovers essentially everything.}
+\vadapt{} reaches $0.996$ success with a $0.4\%$ collision rate while
+still routing $12\%$ of authority to the user.
+Table~\ref{tab:paired} puts those differences on a statistical footing.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\vadapt{} vs. & subjects & $\Delta$ success & 95\% CI \\
+\midrule
+\vmanual  & 9 & $+0.878$ & $[+0.791,\ +0.957]$ \\
+\vfixed   & 9 & $+0.835$ & $[+0.735,\ +0.924]$ \\
+\vconf    & 9 & $+0.681$ & $[+0.604,\ +0.757]$ \\
+\vsafety  & 9 & $+0.641$ & $[+0.576,\ +0.726]$ \\
+\midrule
+\vauto    & 9 & $\mathbf{-0.004}$ & $\mathbf{[-0.009,\ +0.000]}$ \\
+\bottomrule
+\end{tabular}
+\caption{Paired differences in success at the \emph{subject} level, with
+percentile bootstrap intervals over the nine subjects. The unit of
+analysis is the subject, not the episode: the 540 episodes per variant
+are $9 \times 3 \times 20$, and seeds are repetitions rather than
+participants, so episode-level tests are pseudoreplication. Earlier
+drafts reported episode-level $p$-values as small as $3.6\times10^{-248}$;
+those are an artifact of that error and have been withdrawn. The
+margin over every blending policy is large and unambiguous; the margin
+over pure autonomy is negative --- see Section~\ref{sec:honest}.}
+\label{tab:paired}
+\end{table}
+
+\subsection{Trajectories}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig1_path_overlay.pdf}
+\caption{All six arbitration policies driving the \textbf{doorway}
+environment from an identical seed (subject 3, seed 0), so the decoder
+errors, latencies and confusions are bit-identical across the six
+traces. The central pillar with its two symmetric gaps is the averaging
+trap of Section~\ref{sec:averaging}. \vmanual{}, \vfixed{} and \vconf{}
+all \emph{collide} with it, at $5.4$\,s, $5.0$\,s and $4.4$\,s
+respectively. The decoder made no errors before these collisions: those three
+collide because the simulated operator steers straight at the goal and
+does not avoid obstacles (Section~\ref{sec:operator}). Only \vauto{}
+($8.4$\,s) and \vadapt{} ($9.4$\,s) commit to a gap and reach the goal. \vsafety{} is the instructive case: it does
+\emph{not} collide, but it stalls in front of the pillar and times out
+at the $60$\,s limit --- ``safe but not helpful''
+(Section~\ref{sec:negative}) visible in a single episode.}
+\label{fig:paths}
+\end{figure}
+
+Figure~\ref{fig:paths} is the qualitative summary of the whole
+experiment. Because all six panels share a seed, every difference
+between them is attributable to the arbitration law alone --- the noise
+is held fixed by construction.
+
+\subsection{The authority--safety frontier}
+\label{sec:frontier}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig2_tradeoff.pdf}
+\caption{Left: collision rate as a function of constant authority
+$\alpha$, sweeping \vfixed{} across $[0,1]$. Right: the intervention
+trade-off. The collision curve has a pronounced knee at
+$\alpha = 0.20$: beyond a fifth of authority, collisions climb fastest.}
+\label{fig:tradeoff}
+\end{figure}
+
+Figure~\ref{fig:tradeoff} plots the frontier that constant authority
+buys, and Table~\ref{tab:sweep} gives the numbers beneath it. Sweeping
+$\alpha$ through eleven constant values traces it
+directly. It is steep. Constant authority up to
+$\alpha = 0.1$ is free --- success stays at $1.000$ --- and by
+$\alpha = 0.4$ three-quarters of episodes end in a collision.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabular}{@{}lrrrrrrrrrrr@{}}
+\toprule
+$\alpha$ & 0.0 & 0.1 & 0.2 & 0.3 & 0.4 & 0.5 & 0.6 & 0.7 & 0.8 & 0.9 & 1.0 \\
+\midrule
+Success   & 1.000 & 1.000 & 0.731 & 0.456 & 0.252 & 0.161 & 0.146 & 0.135 & 0.128 & 0.124 & 0.119 \\
+Collision & 0.000 & 0.000 & 0.265 & 0.543 & 0.748 & 0.839 & 0.854 & 0.865 & 0.872 & 0.876 & 0.881 \\
+\bottomrule
+\end{tabular}
+\caption{The authority--safety frontier under \emph{constant} authority.
+The knee is at $\alpha = 0.20$.}
+\label{tab:sweep}
+\end{table}
+
+\begin{remark}[A frontier reading that the headline table hides]
+\label{rem:frontier}
+Table~\ref{tab:headline} reports \vadapt{} at a \emph{mean} authority of
+$0.118$ with $0.996$ success. Table~\ref{tab:sweep} shows that a
+\emph{constant} $\alpha = 0.1$ achieves $1.000$. On mean authority
+alone, therefore, the adaptive policy sits essentially \emph{on} the
+fixed-$\alpha$ frontier, not above it, and we would be overstating our
+result to claim otherwise.
+
+The defensible distinction is not how much authority is delivered in
+total but \emph{when} it is delivered. A constant $\alpha = 0.1$ gives
+the user a permanently attenuated command --- ninety percent of every
+input is discarded, including in an empty corridor where obeying it
+costs nothing. The adaptive law raises authority towards the decoder's
+current confidence when confidence is high and the path is clear
+($\alpha$ peaks at about $0.6$--$0.65$ in Figure~\ref{fig:alphatrace}), and lowers it towards
+zero when risk rises or confidence is low. Figure~\ref{fig:alphatrace}
+illustrates this in one episode; it is not a measurement of the
+distribution, and the aggregate data are less favourable (mean $\alpha$
+is $0.16$ even in the open corridor). A distribution-level metric ---
+authority delivered per unit of risk --- is the measurement this study
+lacks and that future work should add.
+\end{remark}
+
+\subsection{Decoupling success from decoder quality}
+\label{sec:persubject}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig3_per_subject.pdf}
+\caption{\textbf{The headline result.} Per-subject success against
+decoder quality ($\kappa$), for three policies. Under \vfixed{} and
+\vsafety{} success tends to rise with decoder quality ($r = +0.55$ and
+$+0.69$; $n = 9$, weak evidence). Under \vadapt{} that link is broken --- every subject
+reaches $0.98$--$1.00$, including subject 5, whose decoder performs
+\emph{below chance} at $\kappa = -0.079$.}
+\label{fig:persubject}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabular}{@{}lrrrrrrrrrrr@{}}
+\toprule
+Subject & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & $r$ & $p$\\
+\midrule
+$\kappa$ & 0.407 & 0.407 & 0.588 & 0.185 & $-0.079$ & 0.171 & 0.194 & 0.329 & 0.116 & --- & ---\\
+\midrule
+\vfixed  & 0.367 & 0.150 & 0.300 & 0.033 & 0.017 & 0.083 & 0.400 & 0.050 & 0.050 & $+0.551$ & 0.124\\
+\vsafety & 0.433 & 0.467 & 0.367 & 0.350 & 0.067 & 0.467 & 0.333 & 0.417 & 0.300 & $+0.689$ & 0.040\\
+\vadapt  & 1.000 & 0.983 & 1.000 & 1.000 & 1.000 & 1.000 & 0.983 & 1.000 & 1.000 & $-0.125$ & 0.749\\
+\bottomrule
+\end{tabular}
+\caption{Per-subject success rates and their Pearson correlation with
+decoder $\kappa$.}
+\label{tab:persubject}
+\end{table}
+
+Figure~\ref{fig:persubject} and Table~\ref{tab:persubject} carry the
+result we consider worth defending. For \vfixed{} and
+\vsafety{}, task success tracks decoder quality --- which is to say,
+under those policies the control problem has not been solved, merely
+inherited from the decoding problem. With $n = 9$ these correlations are
+weak evidence on their own ($p = 0.124$ and $0.040$); the \vsafety{}
+correlation also leans on subject 5 (without it, $r = +0.34$, $p = 0.41$).
+The clearer statement is the one in the figure: under \vadapt{} every
+subject, whatever their $\kappa$, reaches $0.983$--$1.000$.
+
+\begin{remark}[The adaptive correlation is uninformative]
+\vadapt{}'s $r = -0.125$ ($p = 0.749$) shows no relationship with
+decoder quality, and at a ceiling it could not show much else: all nine
+values lie in $[0.983, 1.000]$, and only two subjects (2 and 7) differ
+from $1.000$, each by one episode in sixty. The correlation is reported
+for completeness, not as evidence; the evidence is that every subject
+sits at the ceiling.
+\end{remark}
+
+\begin{remark}[Decoupled success, coupled authority]
+Under \vadapt{} the \emph{authority} a subject receives does track
+decoder quality: per-subject mean $\alpha$ ranges from about $0.03$
+(subjects 4, 5, 6 and 9) to $0.30$ (subject 3), $r = +0.81$ with
+$\kappa$ ($p = 0.009$, $n = 9$). Subject 5 receives $\alpha \approx 0.03$
+and is in effect driven by the autonomy, which also reaches $1.000$ for
+every subject. The policy converts a poor decoder into \emph{less
+authority} rather than into more collisions; it does not show that a
+poor decoder's user is given meaningful control.
+\end{remark}
+
+\subsection{Authority in time}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig4_alpha_trace.pdf}
+\caption{One \vadapt{} episode in the doorway (subject 3, seed 0),
+showing authority $\alpha$, calibrated confidence $c$, situational risk
+$r$ and time-to-collision $\ttc$ on a common time axis. \textbf{Both
+terms of $\alpha = c\,(1-r)$ can be seen acting separately.} The initial
+collapse from $\alpha \approx 1$ is driven by \emph{confidence}, which
+sits at the four-class prior of $0.25$ until the first decision arrives,
+while risk is still zero. The later collapses, from about $t = 2.6$\,s
+and $t = 7$\,s, are driven by \emph{risk} as $\ttc$ falls through the
+ramp of \eqref{eq:risk}; authority recovers to about $0.65$ in the clear
+stretch near $t = 6$\,s. The trace is smooth rather than chattering
+--- the Schmitt trigger, rate limiter and $0.25$\,s low-pass of
+Section~\ref{sec:control} doing their work. Smoothness is necessary for
+the frozen-$\alpha$ stability analysis to be a useful guide, but it is
+not sufficient (Section~\ref{sec:proofscope}). The
+decoder happened to stay in its reliable state for the whole of this
+episode, so the bottom panel is flat.}
+\label{fig:alphatrace}
+\end{figure}
+
+Figure~\ref{fig:alphatrace} carries two burdens. First, it
+illustrates Remark~\ref{rem:frontier}: authority is not uniformly
+attenuated but \emph{allocated}, high where obedience is cheap and low
+where it is expensive. Second, it shows that $\alpha$ changes smoothly, without
+chatter. It does \emph{not} show time-scale separation: the filter
+constant $\tau_s = 0.25$\,s is shorter, not longer, than the loop's
+dominant time constants (about $0.3$--$0.85$\,s), and the collapses in
+the figure take place over one to two seconds, comparable to the loop's
+own response. Even for a linear loop the frozen-$\alpha$ analysis of
+Section~\ref{sec:math} would therefore be only a heuristic reference for
+a time-varying $\alpha$; for the simulated wheelchair it does not apply
+at all (Section~\ref{sec:delaytruth}).
+
+\subsection{Calibration}
+
+Figure~\ref{fig:reliability} shows what Platt scaling buys. A perfectly
+calibrated decoder would lie on the diagonal: among the trials it
+declares $70\%$ likely, $70\%$ should be correct.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig5_reliability.pdf}
+\caption{\emph{Left:} reliability curves for the calibrated decoder, one
+line per subject, against the ideal diagonal. The curves are ragged
+because each subject contributes only $288$ evaluation trials spread
+over ten bins; the trend, not any individual segment, is the signal.
+\emph{Right:} expected calibration error per subject, before (grey) and
+after (blue) Platt scaling. \textbf{Every one of the nine subjects
+improves}, and the mean falls from $0.196$ to $0.096$; subject 7 is the
+starkest case, $0.371 \rightarrow 0.188$. Calibration matters here for a
+control reason rather than a statistical one: \vconf{} sets
+$\alpha = c$ directly, so an over-confident decoder does not merely
+mispredict --- it hands authority to a command that is wrong.}
+\label{fig:reliability}
+\end{figure}
+
+\subsection{The averaging failure, demonstrated}
+\label{sec:averaging}
+
+The brief required this failure be \emph{shown} rather than asserted. It
+is shown twice: once at the plant's command interface, before any
+controller exists, and once in the full closed loop with actuator lag.
+
+At the interface, two intents $40^\circ$ either side of an obstacle
+convert through \eqref{eq:intent} to:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Command & $v_{\mathrm{cmd}}$ (m/s) & $\omega_{\mathrm{cmd}}$ (rad/s) \\
+\midrule
+Operator, $40^\circ$ left  & 0.59 & $+1.40$ \\
+Autonomy, $40^\circ$ right & 0.59 & $-1.40$ \\
+\textbf{50/50 blend}       & \textbf{0.59} & \textbf{0.00} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Both inputs turn hard away from the obstacle; their average drives
+straight into it at \emph{undiminished} speed. In the closed loop, with
+the chair at $(3.0, 4.0)$ heading at the pillar at $0.6$\,m/s:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Policy & Collision & Min.\ clearance \\
+\midrule
+Operator alone, turn left ($\omega = +0.6$)  & no  & 0.453\,m \\
+Autonomy alone, turn right ($\omega = -0.6$) & no  & 0.453\,m \\
+\textbf{\vfixed{} 50/50}                     & \textbf{YES} & \textbf{0.300\,m} \\
+\vsafety{}                                   & no  & 0.453\,m \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The collision radius is $0.35$\,m. Both commands are individually safe
+by a comfortable margin; their average is not. The mechanism is exactly
+that identified in Section~\ref{sec:intent}: the blend cancels the yaw
+($0.5(+0.6) + 0.5(-0.6) = 0$) while forward speed survives untouched, so
+the chair proceeds straight at precisely the obstacle both original
+commands were avoiding.
+
+This is the structural argument against convex blending as an
+arbitration primitive, and it is why \vsafety{} \emph{projects} onto the
+safe set \eqref{eq:filter} rather than averaging: a projection always
+returns some command the user could have given, never a compromise
+between two incompatible ones.
+
+\subsection{A repair that had to come first}
+\label{sec:repair}
+
+The conclusion of Section~\ref{sec:ablations} --- that risk carries the
+safety and measured confidence adds no measurable success --- was originally obtained from an experiment that
+\emph{could not have concluded otherwise}, and is reported here only
+after that was fixed.
+
+In the original channel, each decision's confidence was drawn from a flat
+pool of the subject's measured posteriors, independently of whether the
+simulated command was actually wrong. Confidence and correctness were
+therefore statistically independent \emph{by construction}. On the real
+decoder the calibrated posterior separates correct from wrong trials at
+$\mathrm{AUC} = 0.676$; the simulation reproduced $0.500$, which is pure
+noise. Concluding ``confidence does not matter'' from that setup was
+unfalsifiable.
+
+The channel now draws confidence conditionally on the chain's state, which
+restores the empirical relationship (simulated $\mathrm{AUC} = 0.679$),
+and the entire grid was re-run. Because the conditional draw consumes the
+generator identically, the two runs share seeds, chain states and
+latencies, so they can be compared subject by subject:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+& $\Delta$ success & 95\% CI \\
+\midrule
+\vconf{}                 & $+0.002$ & $[-0.015,\ +0.017]$ \\
+\vadapt{}                & $+0.000$ & $[-0.006,\ +0.006]$ \\
+\vadapt{}, no risk term  & $-0.015$ & $[-0.056,\ +0.028]$ \\
+\vmanual{}, \vfixed{}, \vsafety{} & exactly $0$ & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Nothing moved.} The three variants that never read confidence are
+unchanged to the last digit, which is the check that the two runs really
+are comparable; the confidence-dependent variants moved by amounts
+indistinguishable from Monte-Carlo noise.
+
+The conclusion therefore survives, but it now means something stronger and
+different: not that an uninformative signal was ignored, but that
+\emph{a genuinely informative signal was available and the controller
+still gained nothing measurable from it}. The mechanism is that
+conditional sampling preserves each subject's \emph{marginal} confidence
+distribution --- mean $\alpha$ for \vconf{} is $0.387$ before and after ---
+so the same total authority is handed out, merely better timed, and the
+timing signal is too weak to matter. Within a subject the separation
+$\mathbb{E}[c \mid \text{correct}] - \mathbb{E}[c \mid \text{wrong}]$
+averages only $0.052$, and for four of nine subjects it is below $0.02$
+(for subject 5 it is negative). The pooled figure of $0.68$ is largely a
+\emph{between}-subject effect, and between-subject structure cannot help a
+controller that only ever sees one subject at a time.
+
+\subsection{Ablations: what actually does the work}
+\label{sec:ablations}
+
+Table~\ref{tab:ablations} separates the two terms of
+$\alpha = c\,(1-r)$ by disabling one mechanism at a time and rerunning
+the entire grid. Because the seeds are unchanged, each row is directly
+comparable to the baseline above it.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Ablation & \vadapt{} & \vsafety{} & \vconf{} \\
+\midrule
+baseline                  & 1.00 & 0.36 & 0.31 \\
+\textbf{no risk term}     & \textbf{0.80 ($-0.20$)} & \textbf{0.12 ($-0.24$)} & 0.31 ($0.00$) \\
+perfect confidence        & 1.00 ($0.00$)  & 0.36 ($0.00$)  & 0.51 ($+0.19$) \\
+no delay                  & 1.00 ($0.00$)  & 0.35 ($-0.01$) & 0.32 ($+0.01$) \\
+no burst errors           & 1.00 ($0.00$)  & 0.34 ($-0.01$) & 0.31 ($-0.01$) \\
+confidence age-decay      & 1.00 ($0.00$)  & 0.36 ($0.00$)  & 0.57 ($+0.25$) \\
+\bottomrule
+\end{tabular}
+\caption{Success rates under each ablation, with the change from
+baseline in parentheses. Each ablation is a dotted-path override in the
+configuration. For \vsafety{}, forcing $r = 0$ also disables its
+intervention trigger (mean $\alpha$ becomes $1.000$ and it reproduces
+\vmanual{}), so that cell measures the filter switched off.}
+\label{tab:ablations}
+\end{table}
+
+Four conclusions follow, and the first is uncomfortable.
+
+\textbf{The risk term carries the safety; confidence governs how much
+authority is returned.} Deleting risk costs \vadapt{} $20$ points of
+success. Replacing the measured confidence with a \emph{perfect oracle}
+--- one that knows whether each decision was actually correct --- leaves
+success unchanged ($0.996$), but success is at its ceiling, so that null
+says little; what the oracle does change is authority, which nearly
+doubles (mean $\alpha$ $0.118 \rightarrow 0.230$) --- the one thing
+\vadapt{} offers over \vauto{} (Section~\ref{sec:honest}). No ablation
+removes confidence while keeping risk ($c \equiv 1$), so the study
+cannot rank the two terms outright. It shows that risk is necessary for
+safety, and that confidence decides how much authority can safely be
+returned. Since the policy is named for confidence and it is risk that
+keeps it safe, Section~\ref{sec:reframe} reframes it accordingly.
+
+\textbf{A perfect confidence signal does help when it is all you have.}
+\vconf{} gains $+0.19$ from an oracle. Note what that compares: a
+\emph{perfect} signal against a real one. It says the ceiling is higher,
+not that the real signal is informative enough to reach it. The
+distinction matters for anyone designing a system without a map or a
+range sensor, where risk cannot be computed.
+
+\textbf{Age decay does not show that confidence is informative --- an
+earlier draft read it backwards.} Age decay helps \vconf{} by $+0.25$
+and leaves \vadapt{}'s success essentially unchanged ($0.996 \to 1.000$)
+while cutting its mean authority
+from $0.118$ to $0.029$. The earlier reading was that this proves
+confidence carries information. It does not. Age decay pulls confidence
+toward the prior $0.25$, which is \emph{below} the marginal mean of
+$0.455$, so its dominant effect is simply to \textbf{lower $\alpha$} and
+hand back less authority. Making a signal \emph{less} informative while
+performance \emph{improves} is evidence against that signal's
+usefulness, not for it. It is therefore \emph{reported} as a level
+effect, not adopted as a default.
+
+\textbf{Burst structure does not bind, and delay-induced instability
+does not explain the failures.} Both ablations move nothing --- but for
+delay, the ablation is not the reason we can say so.
+$\texttt{no\_delay}$ removes $\tau_h = 0.2$\,s from a $3.77$\,s loop
+delay (the \vmanual{} value; $3.84$\,s pooled), that is $5\%$ of it, so
+its null establishes nothing
+(Section~\ref{sec:delaytruth}). What can be said is narrower: $97\%$ of
+the degradation across the authority sweep occurs below the heading-loop
+bound $\astar = 0.6126$ (Section~\ref{sec:headingloop}), where even the
+linearised delayed-feedback model would be \emph{delay-independent}
+--- stable for any delay whatever. Together with the obstacle-free run of
+Section~\ref{sec:delaytruth}, which shows no instability even $5.8\times$
+past the boundary, this makes delay-induced \emph{instability} an
+unlikely cause of the failures (the linear model is only a reference for
+the simulated chair); it does not show that
+latency has no effect on performance (decoder latency was never
+ablated, and in free space delay alone adds $29\%$ to the time to goal,
+Section~\ref{sec:delaytruth}). Bursts do not bind because there are
+none in this dataset (Section~\ref{sec:markov}).
+
+\subsection{Burstiness sweep}
+\label{sec:burstresults}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Clustering ($\times B_{\mathrm{iid},i}$) & 1.0 (i.i.d.) & 1.5 & 2.5 & 4.0 \\
+\midrule
+\vfixed  & $0.178 \pm 0.032$ & $0.196 \pm 0.034$ & $0.230 \pm 0.036$ & $0.213 \pm 0.035$ \\
+\vadapt  & $0.996 \pm 0.005$ & $0.998 \pm 0.004$ & $0.996 \pm 0.005$ & $0.994 \pm 0.006$ \\
+\vsafety & $0.357 \pm 0.040$ & $0.372 \pm 0.041$ & $0.407 \pm 0.041$ & $0.389 \pm 0.041$ \\
+\midrule
+effective $B$ & 1.45--5.24 & 2.17--7.85 & 3.62--13.09 & 5.79--20.95 \\
+\bottomrule
+\end{tabular}
+\caption{Success rates across imposed clustering, as a multiple of each
+subject's own i.i.d.\ burst length, holding that subject's measured error
+\emph{rate} fixed per \eqref{eq:burst}. The final row gives the range of
+realised absolute burst lengths across subjects, which is what makes the
+resolution limit in the text visible.}
+\label{tab:burst}
+\end{table}
+
+Since the dataset does not exhibit burst errors, the intention was to
+establish whether the conclusion would survive if it did. \textbf{This
+experiment cannot establish that, and the robustness claim an earlier
+draft made here has been withdrawn.}
+
+The reason is a resolution limit. In the \texttt{main} condition an
+episode issues a median of $5$ decisions under \vadapt{} and $4$ under
+\vfixed{}. At $4.0\times$ the
+imposed mean burst reaches $20.95$ decisions for subject 5. A burst of
+$21$ cannot occur inside an episode of $5$, so for the two variants that
+matter the independent variable is not expressible at the upper end of
+its own range. \vadapt{} is flat across the sweep, but that cannot be
+read as robustness: \vadapt{} is at its ceiling, and long bursts cannot
+be realised within an episode.
+
+Both \vfixed{} and \vsafety{} move with clustering by similar amounts up
+to $2.5\times$ ($0.178 \to 0.230$ and $0.357 \to 0.407$), although only
+\vsafety{} has many decisions per episode (median $30$ in the
+\texttt{main} condition, because its episodes last ${\sim}45$\,s).
+Clustering therefore does act even within short episodes --- a burst
+longer than an episode makes that episode's errors all-or-nothing ---
+so the resolution argument explains less than it first appears to. With
+one sweep and a non-monotonic final point these are observations, not
+results.
+
+\subsection{Stability results}
+\label{sec:stabresults}
+
+Figure~\ref{fig:stability} shows the boundary of
+Section~\ref{sec:math} evaluated over the whole authority axis, and
+Table~\ref{tab:stability} lists the numbers that characterise it for
+the configured gains.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig6_stability.pdf}
+\caption{The stability boundary in the $(\tau, \alpha)$ plane. The solid
+curve is the analytic $\tau_{\max}(\alpha)$ from \eqref{eq:taumax};
+markers are the result of direct DDE simulation. Near $\alpha \approx 0.44$ the
+curve leaves the plotted range, but it is not a true vertical
+asymptote: $\tau_{\max}$ rises to about $13.6$\,s at $\alpha = 0.441425$
+and jumps to $\infty$ below it (Section~\ref{sec:alphastar}), where
+\emph{no} delay destabilises the loop. The operating point of this study is \emph{not} $\tau_h =
+0.2$\,s: the full loop delay under \vmanual{}, including the channel's
+sample-and-hold and transport, is $3.77$\,s ($3.84$\,s pooled over all
+variants), which is $5.8\times$ the heading loop's
+$\tau_{\max}(1) = 0.647$\,s. Section~\ref{sec:delaytruth} reports
+why the simulated loop nonetheless does not destabilise.}
+\label{fig:stability}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+Quantity & Value \\
+\midrule
+LQR gains $K_1$, $K_2$ & $3.1622776601683795$, $1.885230548905366$ \\
+Operator gains $K_p$, $K_d$; damping $d$ & $4.0$, $2.0$; $1.0$ \\
+$\astar = K_1/(K_1+K_p)$ & $0.4415184401122529$ \\
+$b(\astar)$ & $-0.09764079535270254$ \\
+$\astar$ exact? & \textbf{no} (criterion \eqref{eq:criterion} fails) \\
+True delay-independent boundary & $0.441425113651761$ \\
+Over-statement by $\astar$ & $0.021\%$ \\
+$\tau_{\max}(\alpha = 1)$ & $0.529028964035817$\,s \\
+Phase margin; crossover & $1.27099$\,rad ($72.8^\circ$); $2.4025$\,rad/s \\
+Operator delay $\tau_h$ & $0.2$\,s \\
+Effective loop delay $\tau_{\mathrm{eff}}$ (measured) & $\mathbf{3.84}$\,\textbf{s} pooled; $3.77$\,s \vmanual{} \\
+$\tau_{\mathrm{eff}}(\vmanual{})$ vs.\ heading-loop $\tau_{\max}(1)$ & $\mathbf{5.8\times}$ \textbf{past} (\S\ref{sec:delaytruth}) \\
+Heading loop: $\astar$, $\tau_{\max}(1)$ & $0.6125741$ (\textbf{exact}), $0.6473$\,s \\
+\bottomrule
+\end{tabular}
+\caption{Stability results for the configured gains.}
+\label{tab:stability}
+\end{table}
+
+For the configured gains the boundary falls monotonically with
+authority: handing more of the loop to the delayed path reduces the
+delay the loop tolerates. This is a property of these gains rather than a
+general law, and it is asserted on the $\alpha$ grid as a test
+(\texttt{test\_tau\_max\_decreases\_with\_authority}).
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+$\alpha$ & Exact $\tau_{\max}$ (s) & Pad\'e(2,2) (s) & Relative error \\
+\midrule
+0.5 & 1.8147242 & 1.8610502 & $+2.553\%$ \\
+0.6 & 1.1409738 & 1.1558119 & $+1.300\%$ \\
+0.7 & 0.8693266 & 0.8764859 & $+0.824\%$ \\
+0.8 & 0.7114394 & 0.7155393 & $+0.576\%$ \\
+0.9 & 0.6056838 & 0.6082816 & $+0.429\%$ \\
+1.0 & 0.5290290 & 0.5307918 & $+0.333\%$ \\
+\bottomrule
+\end{tabular}
+\caption{Pad\'e(2,2) against the exact boundary. The error is positive
+at \emph{every} authority: the approximation claims the loop tolerates
+more delay than it does. Optimism is the dangerous direction for a
+stability bound, and the error grows as authority falls --- that is,
+Pad\'e is worst exactly in the shared-control regime the project cares
+about.}
+\label{tab:pade}
+\end{table}
+
+\subsection{Verification of the stability boundary}
+\label{sec:verification}
+
+A derivation that is only checked against itself is not checked at all.
+Table~\ref{tab:checks} summarises four checks on
+$\tau_{\max}(\alpha)$, each of which could fail on its own; the
+paragraphs below explain what each one is actually evidence for.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}clp{1.6cm}>{\raggedright\arraybackslash}p{5.0cm}@{}}
+\toprule
+Check & Method & Tolerance & Result \\
+\midrule
+1 & Against \texttt{control.margin} at $\alpha=1$ & $10^{-10}$\,s
+  & $\mathbf{2.2\times10^{-16}}$\,s \\
+2 & DDE settles at $0.9\tau_{\max}$, diverges at $1.1\tau_{\max}$ & sign
+  & \textbf{pass} at $\alpha \in \{0.55, 0.70, 0.85, 1.00\}$ \\
+3 & DDE bisection vs.\ analytic & $3\%$
+  & worst $\mathbf{4.6\times10^{-4}\%}$ \\
+4 & Independent base MATLAB & --- & \textbf{exactly zero} at
+  $\alpha=1$; \mbox{$5\times10^{-10}$\,s} over the curve \\
+\bottomrule
+\end{tabular}
+\caption{The verification checks. Check 1 is the strongest evidence for
+the algebra at $\alpha = 1$ (where the LQR terms vanish), Check 3 the
+strongest evidence for the number across $\alpha$, and Check 4 a guard
+against coding errors in either implementation.}
+\label{tab:checks}
+\end{table}
+
+\textbf{Check 1} compares the analytic $\tau_{\max}(1)$ against the delay
+margin computed as $\mathrm{PM}/\omega_c$ by the \texttt{control}
+package, which at $\alpha = 1$ sees the loop transfer function
+$L(s) = (K_p + K_d s)/(s(s+d))$. That package is a wholly independent
+implementation by other authors; agreement at machine precision
+($2.2\times10^{-16}$\,s, i.e.\ about two units in the last place) is strong
+evidence the algebra is right. The check also holds away from the
+configured gains, at $(K_p, K_d, d) \in \{(6,1,0.5), (2,3,2),
+(8,4,1)\}$.
+
+\textbf{Check 2} tests a consequence of the boundary rather than the
+boundary itself. At $0.9\tau_{\max}$ the measured growth rate
+\eqref{eq:growth} is negative and at $1.1\tau_{\max}$ positive, at every
+authority tested; at $\tau_{\max}$ exactly, $|\lambda| < 5\times10^{-3}$,
+i.e.\ marginal.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+$\alpha$ & $\tau_{\max}$ (s) & $\lambda$ at $0.9\tau_{\max}$ & $\lambda$ at $1.1\tau_{\max}$ \\
+\midrule
+0.55 & 1.3789702 & $-0.0391$ & $+0.0262$ \\
+0.70 & 0.8693266 & $-0.0803$ & $+0.0576$ \\
+0.85 & 0.6539125 & $-0.1160$ & $+0.0909$ \\
+1.00 & 0.5290290 & $-0.1551$ & $+0.1143$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Check 3} recovers the number itself by bisection
+(Section~\ref{sec:bisection}), consulting the analytic formula only for
+a bracket. The worst relative error over six authorities is
+$4.56\times10^{-6}$, against a tolerance of $3\times10^{-2}$ --- four
+orders of magnitude inside it.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+$\alpha$ & Analytic (s) & Bisected (s) & Relative error \\
+\midrule
+0.5 & 1.8147241588 & 1.8147220498 & $1.16\times10^{-6}$ \\
+0.6 & 1.1409738006 & 1.1409736462 & $1.35\times10^{-7}$ \\
+0.7 & 0.8693265926 & 0.8693286125 & $2.32\times10^{-6}$ \\
+0.8 & 0.7114393774 & 0.7114400875 & $9.98\times10^{-7}$ \\
+0.9 & 0.6056837929 & 0.6056865563 & $4.56\times10^{-6}$ \\
+1.0 & 0.5290289640 & 0.5290310906 & $4.02\times10^{-6}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Check 4} is the cross-language check, and it is worth explaining
+why it is evidential rather than ceremonial. The three MATLAB scripts
+share \emph{no code} with the Python implementation; the two sides
+communicate only through CSV and JSON files. Because both sides implement
+the same derivation, this check guards against coding errors rather than
+against an error in the mathematics itself; Checks 2 and 3, which
+integrate the delay equation directly, are what test the mathematics. Base MATLAB (no Control System Toolbox, no Simulink)
+reproduces $\tau_{\max}(1) = 0.529028964035817$\,s with a difference
+from Python of exactly zero, and the full $\tau_{\max}(\alpha)$ curve to
+$5\times10^{-10}$\,s.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{matlab_stability.png}\\[1.2em]
+\includegraphics[width=\textwidth]{matlab_replay.png}
+\caption{Independent MATLAB verification, sharing no code with the
+Python implementation. \emph{Top} (\texttt{stability\_check.m}): the
+delay boundary recomputed from scratch in base MATLAB and overlaid on
+the Python curve, together with the open-loop magnitude response and the
+Nyquist plot at $\alpha = 1$. \emph{Bottom}
+(\texttt{replay\_on\_matlab.m}): an \texttt{ode45} replay of a Python
+double-integrator episode --- position, the measured decoder confidence
+driving it, and the MATLAB-minus-Python residual, which stays at
+$5.07\times10^{-12}$, i.e.\ at the level of double-precision rounding.
+This replay was written to substitute for a Simulink model, which was
+not available.}
+\label{fig:matlab}
+\end{figure}
+
+The \texttt{ode45} replay in Figure~\ref{fig:matlab} is a second,
+different kind of check: it validates the \emph{double-integrator
+simulation} (Plant A), not the algebra and not the unicycle simulation
+behind Section~\ref{sec:results}. A variable-step Runge--Kutta integrator in another language,
+given the same initial condition, gains and delay, reproduces the Python
+trajectory to $5.07\times10^{-12}$ --- so the exact zero-order-hold
+update of \eqref{eq:zoh} is not merely self-consistent.
+
+% =====================================================================
+\section{Discussion}
+\label{sec:discussion}
+% =====================================================================
+
+\subsection{The honest caveat, stated first}
+\label{sec:honest}
+
+\textbf{The adaptive policy is not significantly better than simply
+handing over to the autonomy} ($\Delta = -0.004$, 95\% CI
+$[-0.009,\ +0.000]$ over nine subjects), and it is slower ($11.7$\,s
+against $10.5$\,s). On every task-performance metric
+(success, collisions, time), \vauto{} is at least as good as \vadapt{}.
+
+We state this before the positive claims because the alternative --- a
+report that leads with $99.6\%$ and mentions the comparison later --- is
+the kind of presentation that invites a reader to discover the caveat
+themselves and discount everything around it.
+
+What the adaptive policy buys is that it \emph{returns $12\%$ of
+authority to the user at a small cost in safety}: $2$ collisions in
+$540$ episodes against none, and a success difference whose
+subject-level $95\%$ interval $[-0.009, +0.000]$ lies above the margin
+$-\delta_s = -0.02$ (Section~\ref{sec:stats}), so \vadapt{} is
+non-inferior to \vauto{} at this simulation-resolution margin, and never
+better. How much authority is returned depends strongly on the decoder:
+about $3\%$ for the four subjects with the lowest confidence, and
+between about $10\%$ and $30\%$ for the other five ($0.30$ for
+subject 3). Whether that is
+worth anything depends on user agency and acceptance, which this study
+does not measure. So the defensible claim is narrower than the headline
+number, and still useful:
+
+\begin{quote}
+\itshape
+In simulation, authority can be returned to a user whose decoder is
+wrong 56\% of the time without giving up, within the resolution of this
+experiment, the safety of full autonomy --- provided the arbitration is
+conditioned on situational risk.
+\end{quote}
+
+There is a real argument for why returning authority matters, and it is
+worth stating even though this study cannot test it: a wheelchair that
+ignores its user is a wheelchair the user is a passenger in. The
+literature on assistive robotics is consistent that perceived agency
+drives acceptance, and a device that is safe but not felt to be
+controlled is a device that is abandoned. But that is a claim about
+users, and it requires a user study, not a simulation.
+
+\subsection{Reframing: risk-gated authority, not confidence-adaptive control}
+\label{sec:reframe}
+
+The ablations in Section~\ref{sec:ablations} do not support the name we
+started with. The law $\alpha = c\,(1-r)$ was conceived as a
+\emph{confidence}-adaptive policy with a risk correction. The evidence
+says that risk, not confidence, is what keeps it safe:
+
+\begin{itemize}
+\item Removing $r$ costs $20$ points of success.
+\item Replacing $c$ with a perfect oracle leaves success unchanged (it
+      is at its ceiling) but raises mean authority from $0.118$ to
+      $0.230$.
+\end{itemize}
+
+The correct description of the mechanism is therefore \textbf{risk-gated
+authority}: the controller withholds authority when obeying the user
+would be consequential. Risk decides \emph{when} authority must be
+withdrawn; confidence decides \emph{how much} can be returned in the
+first place.
+
+This reframing has a practical consequence that strengthens rather than
+weakens the contribution. A risk signal requires a map and a range
+sensor but \emph{no} decoder introspection; a confidence signal requires
+a calibrated probabilistic decoder. If risk carries the safety, the approach
+may transfer to BCIs and assistive interfaces that emit no usable
+confidence at all --- a much larger class of devices. With $c \equiv 1$
+the law becomes $\alpha = 1 - r$. The
+$\vconf{}$ results show what remains achievable when only confidence is
+available ($0.31$, rising to $0.57$ with age decay). Without the risk
+term the gated law reaches $0.80$; no risk-only variant ($c \equiv 1$)
+was run, so what risk achieves without confidence is not measured.
+
+\subsection{Why blending falls off the frontier}
+
+Section~\ref{sec:averaging} gives the mechanism, and it is worth stating
+in general terms because it is not specific to wheelchairs.
+
+Convex blending assumes the average of two good commands is a good
+command. That assumption holds when the safe set is convex in the input
+space. For a nonholonomic vehicle it is \emph{not}: the set of
+collision-free $(v, \omega)$ around an obstacle is generally disconnected
+or non-convex, with one component turning left and another turning
+right. The midpoint of two points in different components need not lie
+in the set at all --- and equation~\eqref{eq:intent} guarantees that
+here the midpoint retains full forward speed while cancelling the yaw,
+so it lies in the worst part of the complement.
+
+This is one reason \vfixed{} sits at $0.161$ despite receiving a
+perfectly good autonomous command half the time. It is not the only
+one: \vfixed{} also fails $60\%$ of corridor episodes, where there is
+nothing to average around, and the operator's own command is unsafe near
+obstacles (Section~\ref{sec:operator}). The mechanism is also why the
+safety filter is constructed as a \emph{projection} \eqref{eq:filter}. A projection onto
+the safe set returns a point \emph{in} the set by definition, whatever
+the set's shape.
+
+The practical lesson is a design rule: where the safe set may be
+non-convex, do not average commands of \emph{comparable weight} near an
+obstacle. The policies that succeed here either keep the user's weight
+small (a constant $\alpha \le 0.1$ reaches $1.000$) or, like \vadapt{},
+drive it towards zero as risk rises --- close to selecting the
+autonomous command. Projection is the principled alternative, but as
+implemented here (\vsafety{}) it was safe without being effective
+(Section~\ref{sec:negative}).
+
+\subsection{Two negative results, reported as such}
+\label{sec:negative}
+
+\textbf{Decoder errors do not arrive in bursts on this dataset}
+(Section~\ref{sec:markov}). Zero of nine subjects show significant burst
+structure. We report the null rather than the model, having first
+demonstrated that the test detects real bursts at $p<0.0001$, and having
+explained the null structurally through the dataset's randomised cue
+order. The Markov machinery is retained --- it is the right model if
+bursts exist --- and burstiness became a swept variable. That sweep
+cannot resolve long bursts within a five-decision episode
+(Section~\ref{sec:burstresults}), so robustness to genuinely bursty
+errors remains an open question rather than a result.
+
+\textbf{The minimum-intervention safety filter is safe but not
+helpful.} It cuts collisions sevenfold against fixed blending
+($0.120$ vs.\ $0.839$) while preserving the most user authority of any
+non-manual policy ($\alpha = 0.771$). But it succeeds only $35.6\%$ of
+the time and its mean episode lasts $44.8$\,s: it prevents crashes
+without enabling progress. Most failures are timeouts ($52\%$ of
+episodes, $94\%$ in the cluttered room) rather than collisions
+($12\%$): staying as close as possible to an operator command that
+points at an obstacle leaves the chair stalled in front of it
+(Figure~\ref{fig:paths}). The residual collisions are consistent with, but
+not shown to be caused by, the committed states of
+Section~\ref{sec:unrecoverable}, in which no feasible command avoids the
+obstacle; intervening earlier would mean intervening more, which is
+precisely what minimum intervention is designed not to do.
+
+This is a genuine tension in the minimum-intervention philosophy, not an
+implementation defect: the threshold that keeps the filter unobtrusive
+also limits how early it can act.
+
+% =====================================================================
+\section{Limitations and Threats to Validity}
+\label{sec:limits}
+% =====================================================================
+
+\subsection{The stability proof does not cover the demonstration plant}
+\label{sec:proofscope}
+
+This is the most important boundary to draw, and we draw it explicitly.
+
+The exact boundary of Section~\ref{sec:math} is derived for a
+\textbf{linear double integrator}, one axis, with an undelayed LQR and a
+delayed PD operator, at \textbf{frozen} $\alpha$. The wheelchair results
+of Section~\ref{sec:results} are produced on a \textbf{nonlinear,
+nonholonomic unicycle with actuator lag, obstacles, and time-varying}
+$\alpha$. These are not the same system, and no claim in this report
+should be read as proving stability of the second from analysis of the
+first.
+
+What the analysis does provide for the unicycle is the heading-loop
+recast of Section~\ref{sec:headingloop}: linearised about steady forward
+motion, the yaw channel maps exactly onto the same machinery, giving
+$\astar = 0.6126$ (exact there, since $K_d = 0$) and
+$\tau_{\max}(1) = 0.647$\,s. It is a result about a linear heading
+loop with an LQR-type autonomy (a surrogate for DWA) and delayed heading
+feedback; the simulated chair has neither (Section~\ref{sec:delaytruth}),
+so the recast is a reference model, not an analysis of the simulated
+channel. It says nothing about the coupled $(v,\theta)$
+dynamics, about the speed gate \eqref{eq:intent}, which is nonlinear by
+construction, or about the switching introduced by obstacle proximity.
+
+Three specific gaps follow:
+
+\begin{enumerate}
+\item \textbf{Frozen-$\alpha$ analysis of a time-varying system.} The
+adaptive policy varies $\alpha$ online. Hysteresis, rate limiting and
+the $0.25$\,s lag remove chatter, and Figure~\ref{fig:alphatrace} shows
+the trace is smooth. They do not make $\alpha$ slow relative to the
+dynamics: the filter constants ($0.25$--$0.30$\,s) are no longer than
+the loop's dominant time constants (about $0.3$--$0.85$\,s), so there
+is no time-scale separation to appeal to. Even for the linear model the
+frozen-$\alpha$ boundary is therefore only a heuristic \emph{guide} for
+a time-varying $\alpha$, not a proof; for the simulated wheelchair it
+is not a guide at all (item 3). A
+rigorous treatment needs a switched-system argument (common Lyapunov
+function or dwell-time condition) or an LPV formulation with $\alpha$ as
+the scheduling parameter. We consider this the single most valuable
+piece of future theoretical work.
+
+\item \textbf{The DWA layer is not covered at all.} It is a receding-horizon
+optimiser with a nonconvex feasible set. Nothing in
+Section~\ref{sec:math} applies to it.
+
+\item \textbf{Delay was not the binding constraint,} but not because the
+loop had margin --- it has none. The effective loop delay under \vmanual{}
+is $3.77$\,s ($3.84$\,s pooled) against a heading-loop margin of
+$0.647$\,s, which is $5.8\times$ past the boundary, and the loop still
+does not destabilise. The reason is a
+structural mismatch between the loop analysed and the loop simulated,
+set out in Section~\ref{sec:delaytruth}. The stability analysis is
+therefore a rigorous result about a loop the simulator does not
+implement: the experiments neither validate nor stress it, and the four
+verification checks remain its only support.
+\end{enumerate}
+
+\subsection{The delay boundary does not transfer to the simulator}
+\label{sec:delaytruth}
+
+An earlier draft of this report stated that the loop ran at $38\%$ of
+its delay margin, comparing $\tau_h = 0.2$\,s against $\tau_{\max}(1) =
+0.529$\,s. Both numbers were the wrong ones. The correction is recorded
+here rather than made silently, because the conclusion it supported
+turns out to be right for a different and better reason.
+
+\textbf{The delay was under-counted.} The boundary constrains the
+\emph{total} loop delay. The BCI channel samples the operator's intent
+once per $T = 2$\,s, holds it, and transports it for a further
+$2$--$3$\,s, and every part of that lies inside the outer position loop (the
+operator steers from where it last saw the chair).
+Measured directly from \texttt{ChannelOutput.age\_s} over $319{,}345$
+simulation steps, the mean age of the active command is $3.64$\,s, so
+$\tau_{\mathrm{eff}} = \tau_h + \mathrm{age} = 3.84$\,s. The
+measured age agrees with the standard sampled-data treatment, which adds
+$T/2$ to the mean transport delay: $2.64 + 1.0 \approx 3.64$\,s, using
+the mean sampled latency of about $2.64$\,s. One consequence is immediate ---
+the \texttt{no\_delay} ablation removes $5\%$ of the loop delay, so its
+null result establishes nothing in either direction.
+
+$3.84$\,s is moreover a \textbf{lower} bound. The latency estimator's
+horizon is $4.0$\,s, but \texttt{latency.max\_s} clips sampling at
+$3.0$\,s, and censoring is severe --- every trial of subject 4, $99\%$ of
+subject 9's and $92\%$ of subject 5's terminate at the horizon. Those
+trials are simulated a full second faster than they were measured, so the
+true loop delay is further past the boundary than the figures here, never
+nearer.
+
+\textbf{The margin was the wrong plant's.} $0.529$\,s is
+$\tau_{\max}(1)$ for the double integrator. The plant simulated is the
+unicycle, whose heading loop (Section~\ref{sec:headingloop}) gives
+$\astar = 0.6126$ and $\tau_{\max}(1) = 0.647$\,s.
+
+Corrected, \vmanual{} ($\tau_{\mathrm{eff}} = 3.77$\,s) runs at $5.8\times$ the boundary rather than at
+$38\%$ of it. \textbf{And it does not destabilise.} Removing every
+obstacle, so a failure cannot be a collision, and forcing every command
+correct, so a failure cannot be decoder error, leaves only the delayed
+loop itself:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+$\tau_{\mathrm{eff}}$ & regime & goal reached & time to goal \\
+\midrule
+$3.77$\,s & $5.8\times$ past & $1.000$ & $11.21$\,s \\
+$1.98$\,s & $3.1\times$ past & $1.000$ & $9.95$\,s \\
+$0.72$\,s & $1.1\times$ past & $1.000$ & $9.04$\,s \\
+$0.22$\,s & inside margin    & $1.000$ & $8.72$\,s \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Delay costs $29\%$ in time-to-goal and nothing else: no oscillation, no
+divergence, no failure. Two features of the simulator explain it.
+
+\begin{enumerate}
+\item \textbf{Delayed reference, undelayed feedback.} The command is
+formed from the operator's delayed \emph{position} but the chair's
+\emph{current} heading, so the yaw law is $\omega_{\mathrm{cmd}} =
+k_\theta\,(\theta_{\mathrm{ref}}(t-\tau) - \theta(t))$, whereas Stage 7
+analyses $K_p\,(\theta_{\mathrm{ref}} - \theta(t-\tau))$. For the heading channel
+alone, with $\theta_{\mathrm{ref}}$ treated as an external signal, a
+delay on the reference does not enter the characteristic equation
+($\tau_\omega s^2 + s + k_\theta = 0$) and cannot destabilise that loop.
+$\theta_{\mathrm{ref}}$ is, however, formed from the delayed position,
+so the delay does sit in the outer position loop, which this report does
+not analyse; that loop's gain is roughly $v/(\text{distance to goal})$,
+small except near the goal, which is the likely reason no instability
+appears. This is not a defect in the simulator --- a real chair's yaw
+controller reads its own gyro, not a delayed estimate --- but it does
+mean the boundary does not apply to the channel it was derived for.
+
+\item \textbf{Saturation.} $v_{\mathrm{cmd}}$ sits at $v_{\max}$ in
+$77.4\%$ of steps. This does not bear on the heading-loop boundary
+directly, but it caps the gain of the outer position loop through which
+the delay acts (item 1).
+\end{enumerate}
+
+What survives is the negative result, on firmer ground than the margin
+ratio it replaces: $97\%$ of the degradation across the authority sweep
+occurs at $\alpha < \astar = 0.6126$ (the heading-loop bound), where even
+the linearised delayed-feedback model has $\tau_{\max} = \infty$, so
+\emph{no} delay of any magnitude can destabilise it. Together with
+the obstacle-free run above, this makes delay-induced instability an
+unlikely cause of these failures (the linear model is only a reference
+for the simulated chair), and that no longer rests on an ablation which moves $5\%$ of the quantity in question;
+whether latency degrades performance in other ways, for example near
+obstacles, is not tested. Everything above is reproduced by
+\texttt{python -m scripts.audit\_delay\_margin}.
+
+\subsection{The dataset substitution: discrete classes, continuous commands}
+
+As set out in Section~\ref{sec:modality}, $\ubci$ is a continuous
+delayed-PD command modulated by measured decoder statistics, not one of
+four discrete symbols. The substitution buys a continuous command
+value, which the linear analysis needs; it does not buy exact
+correspondence between the analysed loop and the simulated loop
+(Section~\ref{sec:delaytruth}). It costs realism in a specific and
+identifiable way.
+
+What is \emph{measured} from real EEG: error rate, per-class confusion
+structure, calibrated confidence, decision latency and its censoring.
+What is \emph{not}: the piecewise-constant, four-symbol waveform that a
+real MI-BCI actually emits. A real user issuing ``turn left'' receives a
+sustained turn until the next decision, whereas our channel delivers a
+continuously varying vector. The likely direction of the bias is that
+our channel is \emph{smoother} and therefore somewhat easier to arbitrate
+than a real one, which would make the reported success rates mildly
+optimistic in absolute terms. Sharing the channel and the seeds does not
+make the policies equally exposed: \vauto{} never uses the channel,
+and policies that give the user more authority depend on it more. The
+bias could therefore change the \emph{ranking}, most plausibly the
+adaptive-versus-autonomy comparison (margin $0.004$); future-work item 3
+is the test.
+
+A discrete-command variant is the most valuable single extension to this
+work, and the architecture already supports it: the modality is a
+configuration switch, and the confusion sampler already produces
+class-level decisions.
+
+\subsection{The operator model}
+\label{sec:operatorlimits}
+
+The operator is a delayed PD controller that \emph{always knows the
+goal}. Real users adapt, learn their decoder's quirks, change strategy
+when it misbehaves, and --- critically --- react to having authority
+taken away. There is no co-adaptation loop here, and a real user's
+response to intervention is entirely outside the model. This is the
+largest gap between the simulation and reality, larger than any plant
+approximation.
+
+It also interacts with the central claim. The argument for adaptive over
+pure autonomy is that it returns authority; whether returning authority
+to a \emph{simulated} PD controller means anything at all is exactly the
+question a user study would answer and this study cannot.
+
+The operator also has \textbf{no obstacle avoidance}: its intent points
+straight at the goal (Section~\ref{sec:operator}). Two consequences
+follow. First, the premise figure ($11.9\%$ success for \vmanual{})
+measures an obstacle-blind driver as well as a noisy channel; only the
+corridor isolates decoder error. Second, part of what the risk term does
+here is withhold authority from a \emph{correctly decoded} command that
+is itself unsafe --- a hazard that decoder confidence cannot detect by
+construction. This favours risk over confidence in
+Section~\ref{sec:ablations}; an obstacle-aware operator model could
+change that balance.
+
+\subsection{No sensitivity analysis}
+
+Every headline number comes from one hand-set configuration: the Schmitt
+thresholds ($0.60/0.40$), the risk horizon and floor ($3.0/0.5$\,s), the
+DWA weights, and the operator gains and delay ($K_p = 4$, $K_d = 2$,
+$\tau_h = 0.2$\,s), which were chosen rather than fitted to human data.
+The gate threshold matters in particular: it sits above the mean
+calibrated confidence ($0.455$), which is the likely reason four
+subjects receive almost no authority. None of these parameters was swept ($\tau_h$ was only removed, in the
+no-delay ablation), so the
+adaptive policy's authority level, and possibly its safety, may not
+generalise.
+
+\subsection{Environment and sensing idealisations}
+
+The environments are three hand-built 2-D occupancy grids with static
+obstacles, a perfect map, and exact self-localisation. There are no
+people, no doors, no dynamic obstacles, no odometry drift, no
+localisation uncertainty, and no sensor faults (dropout probability is
+configured to zero and kept there --- sensor faults are out of scope).
+Range sensing has $2$\,cm of additive Gaussian noise, which is
+optimistic.
+
+The doorway environment is deliberately adversarial for blending, which
+cuts both ways: it makes the averaging failure reproducible, and it also
+means the aggregate collision figures for \vfixed{} are influenced by a
+geometry chosen to defeat it. The corridor and cluttered environments
+are included partly to keep that honest.
+
+\subsection{Predictor--plant mismatch in DWA}
+
+DWA rollouts assume the commanded velocity is achieved instantly, while
+the plant reaches it through first-order lags $\tau_v = 0.30$\,s and
+$\tau_\omega = 0.20$\,s. This is standard practice, and it is mitigated
+two ways --- the dynamic window already restricts candidates to
+velocities reachable under the acceleration limits, and the plan is
+recomputed at $10$\,Hz so any prediction is trusted only briefly ---
+but it is an approximation. Safety does not rest on rollout fidelity; it
+rests on the continuously re-evaluated risk signal. Agreement between
+the closed-form arc predictor and the RK4 plant integrator is pinned to
+$10^{-6}$ over $1.5$\,s by test.
+
+\subsection{Statistical caveats}
+\label{sec:stats}
+
+The unit of analysis is the \textbf{subject}, and there are nine of
+them. The $540$ episodes behind each variant are $9$ subjects $\times\ 3$
+environments $\times\ 20$ Monte-Carlo seeds; seeds are repetitions, not
+participants. An earlier draft ran paired $t$-tests across all $540$ as
+though they were independent observations, which is pseudoreplication,
+and produced $p$-values as small as $10^{-248}$. Those have been
+withdrawn and replaced by subject-level differences with bootstrap
+intervals over the nine subjects. No statistical treatment makes $n = 9$
+into a large sample.
+
+The comparison against pure autonomy is a \textbf{non-inferiority}
+claim, not an equivalence claim and not a null-hypothesis test. A test
+would be useless here in any case: seven of the nine subject-level
+differences are exactly zero, leaving two free signs, so an exact
+sign-flip test has a smallest attainable two-sided $p$ of $0.5$. The
+margin $\delta_s = 0.02$ was fixed before the final re-run from the
+experiment's own resolution (not a pre-registration: earlier results had
+already been seen) --- each subject contributes $60$ episodes, so $1/60 = 0.0167$
+is the finest difference the design can express --- and is therefore an
+\textbf{experiment-resolution tolerance supporting a simulation-level
+statement only}. It is not a clinical, safety, or real-world
+acceptability threshold, and must not be read as one.
+
+The per-subject correlations of Section~\ref{sec:persubject} still have
+$n = 9$ and are still reported with Pearson $r$; at that sample size this
+is a weak instrument, \vadapt{}'s is uninformative because of the
+ceiling, as already flagged, and it is the same parametric construction this section rejects
+elsewhere. It is retained only because the qualitative claim ---
+that adaptive decouples success from decoder quality --- does not rest on
+the $p$-value.
+
+Collision is terminal, so the collision metric is a rate rather than a
+count, and episodes that time out are counted as failures rather than
+analysed separately.
+
+\subsection{The simulated channel is approximately, not exactly, calibrated}
+
+Three quantities in the channel that ought to agree do not, in the third
+decimal place. The chain's transitions use smoothed estimates; its
+initial state is seeded from the stationary rate implied by the
+\emph{unsmoothed} estimates; and the burstiness re-parameterisation and
+the i.i.d.\ ablation both use the empirical marginal. The rate the
+chain actually runs at differs from the measured rate by at most
+$0.0044$ --- $0.44$ percentage points, for subject 5 ($0.8134$ against
+$0.8090$); the rate used to seed the initial state differs by up to
+$0.0066$ ($0.8156$ for the same subject).
+
+This is disclosed rather than fixed: correcting it means refitting in
+Stage 2 and revising every published Stage 2 number, including the
+Kolmogorov--Smirnov statistics and the burst-significance flags, which is
+a larger disturbance than the error. The correct wording throughout is
+that the simulation is \textbf{approximately} calibrated to each
+subject's measured error rate; no claim of exact reproduction is made.
+
+\subsection{Confidence is conditioned on correctness, but not on class}
+
+The repair of Section~\ref{sec:repair} splits each subject's measured
+posteriors into correct and incorrect pools. It does \emph{not} further
+condition on which class was cued, although confidence varies strongly by
+class. The reason is sparsity: $3$ of the $36$ subject $\times$ class
+cells contain $6$ or fewer correct trials, the sparsest being subject 6's
+\texttt{right\_hand} with $2$ correct against $70$ wrong. Class-conditional
+sampling would need a declared shrinkage rule and would still be
+unreliable in those cells. The simplification is stated here rather than
+left implicit.
+
+\subsection{A latent ordering hazard in the command channel}
+
+When several decisions arrive in the same simulation step the channel
+promotes the newest of them, but does not compare that against the
+decision already active. An older command arriving late could therefore
+in principle replace a newer one. On this dataset it cannot: latency lies
+in $[2.0, 3.0]$\,s (the floor is the end of the $2$\,s decoder window;
+the ceiling is the \texttt{max\_s} clip) against a $2.0$\,s decision
+interval, so the
+maximum spread is $1.0$\,s and overtaking would require more than
+$2.0$\,s. In fact it cannot occur at all: a decision issued at $t$ arrives
+no later than $t + 3$, while the next, issued at $t + 2$, arrives no
+earlier than $t + 4$, so arrival order is strictly issue order. It is
+recorded because it would become reachable if the decision interval were
+shortened or the latency ceiling raised.
+
+\subsection{One deliverable is unverified}
+
+The symbolic derivation in \texttt{mathematica/stability.wl} was
+\textbf{never executed}: the development machine has the
+\texttt{wolframscript} launcher on \texttt{PATH} but no Wolfram kernel
+installed. The file ships with a prominent NOT VERIFIED banner and with
+every expected numeric result quoted inline in its comments, so a
+disagreement on first run is immediately visible rather than silent.
+Everything it derives --- the magnitude balance, the quadratic, $\astar$,
+the exactness criterion, the Pad\'e comparison --- is independently
+verified in Python and in base MATLAB. We flag it here rather than let a
+reader discover it.
+
+% =====================================================================
+\section{Engineering Rigour: Bugs Caught, and How}
+\label{sec:bugs}
+% =====================================================================
+
+In a simulation study the credibility of the results rests entirely on
+the credibility of the instrument, so this section documents what was
+wrong with the instrument and how each fault surfaced. The defects fall
+into two classes, and the second is the harder one.
+
+\subsection{Defects found while building}
+
+Every bug in Table~\ref{tab:bugs} was silent, and every one would have
+changed a reported number.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}p{4.6cm}p{5.2cm}p{4.4cm}@{}}
+\toprule
+Bug & How it would have shown up & Caught by \\
+\midrule
+MOABB event ids are alphabetical, not as declared
+ & Every trial mislabelled; accuracy remains plausible
+ & \texttt{test\_decoder\_labels.py} \\
+Longer latency window drops 6 of 288 trials
+ & Latencies shifted into the wrong rows
+ & \texttt{event\_index} alignment test \\
+Four ablation keys did not exist in the config
+ & Ablations silently no-ops, reported as ``no effect''
+ & \texttt{test\_config.py} \\
+Dynamic window sized by the 20\,ms simulation step
+ & DWA paralysed at $0.02$\,m/s
+ & \texttt{test\_dynamic\_window\_}\allowbreak\texttt{spans\_a\_usable\_range} \\
+DWA rollout sampled too coarsely
+ & ``Safe'' command with true $\ttc = 1.46$\,s against a $1.5$\,s horizon
+ & safety-margin test \\
+\texttt{perceived\_state()} re-read an overwritten slot
+ & Returned the \emph{undelayed} state
+ & \texttt{test\_perceived\_state\_}\allowbreak\texttt{is\_not\_the\_}\allowbreak\texttt{current\_state} \\
+DWA stalled at the symmetric pillar
+ & \vauto{} at \textbf{0\% success}
+ & Observed on the full grid; fixed with the navigation field \\
+Pad\'e polynomial padding off by one
+ & MATLAB error (loud, not silent)
+ & MATLAB run \\
+$\astar$ claimed exact when it is a bound
+ & Over-stated safe authority region by $0.021\%$
+ & 20{,}001-point scan of the authority axis \\
+\bottomrule
+\end{tabular}
+\caption{Silent defects found during development.}
+\label{tab:bugs}
+\end{table}
+
+The navigation-field bug is the instructive one. The \emph{baseline that
+was supposed to be trivially safe} was failing completely, and no unit
+test would have caught it, because every component behaved correctly in
+isolation --- DWA returned a valid command, the plant integrated it
+correctly, the grid reported the right clearances. Only running the full
+grid and looking at an implausible number exposed it. The lesson we take
+from it is that aggregate results deserve the same suspicion as
+individual components: a number that is surprisingly bad is as
+informative as one that is surprisingly good, and the brief's instruction
+to stop and check when a result looks suspicious cuts in both
+directions.
+
+\subsection{Defects found after the results were written}
+\label{sec:repairbugs}
+
+The defects in Table~\ref{tab:repair} were found later and are of a
+different kind. The grid had been run, the numbers were in the report,
+and every test passed. Nothing was failing --- which is precisely what
+makes this class hard: there is no symptom to chase, only the question
+of whether each claim means what it appears to mean.
+
+Three of them had a published conclusion resting on an artifact.
+Defect~B is the worst: because simulated confidence was statistically
+independent of simulated correctness \emph{by construction}, the finding
+that ``confidence does not help'' was unfalsifiable --- the experiment
+could not have returned any other answer. Defect~E read a sign
+backwards. Defect~F reached the right conclusion from two wrong numbers,
+which is the most dangerous configuration of all, because the conclusion
+being correct removes the incentive to check the arithmetic.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}p{0.6cm}p{4.5cm}p{4.6cm}p{4.0cm}@{}}
+\toprule
+& Defect & Consequence & Caught by \\
+\midrule
+A & A $44\%$ accuracy reported as a $44\%$ error rate, at ten sites
+  & The decoder described as right $56\%$ of the time when it is right
+    $44\%$ of the time
+  & \texttt{audit\_rate\_claims.py} \\
+B & Confidence drawn independently of whether the command was wrong
+  & Simulated $\mathrm{AUC} = 0.500$ against the decoder's $0.676$: the
+    headline finding was unfalsifiable
+  & Measuring the simulator's own AUC, which nothing had done \\
+C & Burstiness swept as one global $B$, below the feasibility floor for
+    some subjects
+  & $p_{r \to d}$ clipped; each subject's error rate silently moved, by up
+    to $0.17$
+  & \texttt{test\_sweep\_}\allowbreak\texttt{multipliers\_}\allowbreak\texttt{are\_feasible\_}\allowbreak\texttt{for\_every\_subject} \\
+D & \texttt{perfect\_confidence} consumed the generator differently from
+    the baseline
+  & The ablation's seeds diverged, so it was never the paired comparison
+    it was reported as
+  & \texttt{test\_oracle\_}\allowbreak\texttt{confidence\_}\allowbreak\texttt{stays\_seed\_paired} \\
+E & Age decay read as evidence that confidence carries information
+  & Sign error: decay pulls $\alpha$ toward the prior $0.25$, below the
+    marginal $0.455$, so the gain is a \emph{level} effect
+  & Re-deriving what decay does to the mean, rather than to the ranking \\
+-- & $540$ episodes treated as independent observations
+  & Pseudoreplication; $p$-values as small as $10^{-248}$ on $n = 9$
+    subjects
+  & Counting the experimental units \\
+F & $\tau_h = 0.2$\,s compared against the \emph{double integrator's}
+    $0.529$\,s margin
+  & The loop delay under \vmanual{} is $3.77$\,s ($3.84$\,s pooled) and
+    this plant's margin is $0.647$\,s: $5.8\times$ past the boundary,
+    published as $38\%$ of it
+  & \texttt{audit\_delay\_margin.py};
+    \texttt{test\_yaw\_command\_}\allowbreak\texttt{uses\_}\allowbreak\texttt{undelayed\_heading} \\
+G & Medians pooled across conditions instead of scoped to \texttt{main}
+  & $28$ decisions reported where the argument needs $30$; two further
+    numbers scoped wrongly
+  & \texttt{audit\_threshold\_}\allowbreak\texttt{claims.py} \\
+\bottomrule
+\end{tabular}
+\caption{Defects found by adversarial re-review after the results were
+written. None was failing a test. Each changed a published number, or --- in
+the case of B --- left the numbers almost unchanged while changing what they
+mean.}
+\label{tab:repair}
+\end{table}
+
+\textbf{What the two tables have in common.} In both, the component
+behaved exactly as written. The navigation-field bug had DWA returning
+valid commands and the grid reporting correct clearances; Defect~F had a
+stability boundary that is exact, checked four ways, and
+simply not about the loop being simulated. Unit tests cannot catch
+either, because nothing is broken --- the fault is in what the assembled
+system \emph{means}.
+
+\textbf{The failure mode that produced most of them.} Defects E, F and G
+share one mechanism, and naming it was more useful than fixing them
+individually: a quantity adjacent to the load-bearing one is verified,
+and the confirmation is recorded as though it had settled the real claim.
+For F, $\tau_h$ was checked repeatedly and $\tau_{\mathrm{eff}}$ was never
+computed at all. Re-reading does not catch this, because re-reading
+repeats the same substitution; only executing the claim does. Both audit
+scripts named above exist for that reason, and each states the population
+its numbers are scoped to, which is exactly what Defect~G got wrong.
+
+% =====================================================================
+\section{Conclusion and Future Work}
+% =====================================================================
+
+\subsection{What was established}
+
+A brain--computer interface decoding motor imagery from EEG is, on real
+cross-session data, wrong $56\%$ of the time --- and a wheelchair driven
+directly from it collides in $88\%$ of episodes. Splitting control
+authority with an autonomous navigator recovers the task. A fixed split
+works only if the user's share is very small ($\alpha \le 0.1$ gives
+$1.000$; $\alpha = 0.5$ gives $0.161$); conditioning the split on
+situational risk achieves the same success while letting authority rise
+when the path is clear. Near an obstacle the average of two safe
+commands can be unsafe, because the safe set of a nonholonomic vehicle
+is not convex, and we demonstrate exactly that in closed loop. Part of
+the failure of high-authority policies also comes from the simulated
+operator, which does not avoid obstacles.
+
+Gating authority on situational risk works. It reaches $99.6\%$ success
+with a $0.4\%$ collision rate, and it holds $0.98$--$1.00$ for every
+subject including one whose decoder is below chance --- breaking the
+link between decoder quality and task success that fixed blending and
+the safety filter exhibit.
+
+On the theoretical side, the transport-delay boundary of the blended
+loop admits an exact solution. The delay cancels identically from the
+magnitude condition, reducing an infinite-dimensional stability question
+to a quadratic in $\omega^2$, and yielding both $\tau_{\max}(\alpha)$
+and a closed-form criterion, $b(\astar) \ge 0$, for when the
+delay-independent authority bound is tight. The result is checked four
+ways, including an independent implementation in another language that
+shares no code with ours. It is exact for a linear double-integrator
+model of the blended loop; it does not transfer to the simulated
+wheelchair, where the channel delay enters the reference rather than
+the heading feedback (Section~\ref{sec:delaytruth}).
+
+And three findings run against the project's own thesis: the adaptive
+policy is not significantly better than pure autonomy; the risk term
+rather than the confidence term is what keeps it safe, which required
+renaming the mechanism; and the errors this dataset produces are not
+bursty, which required converting an assumption into a swept variable.
+
+\subsection{Future work}
+\label{sec:future}
+
+In descending order of value:
+
+\begin{enumerate}
+\item \textbf{A user study, or at minimum an agency metric.} The central
+argument for adaptive over autonomous control is that it returns
+authority. Nothing in this work shows that matters to a user. Until it
+does, \vauto{} remains at least as good as \vadapt{} on every
+task-performance metric.
+
+\item \textbf{Switched-system or LPV stability for time-varying
+$\alpha$.} A dwell-time condition on the Schmitt trigger, or a common
+Lyapunov function across the $\alpha$ range, would convert the
+frozen-$\alpha$ guide into a proof for the linear model; it would still
+not cover the simulated wheelchair.
+
+\item \textbf{The discrete-command modality.} Running the same six
+policies with a genuine four-symbol channel would test whether the
+ranking survives the substitution of Section~\ref{sec:modality}. The
+architecture already supports it as a configuration switch.
+
+\item \textbf{An authority-allocation metric.} Remark~\ref{rem:frontier}
+identifies the measurement this study lacks: authority delivered per unit
+of risk incurred, which would separate adaptive allocation from uniform
+attenuation on the frontier rather than relying on a single trace.
+
+\item \textbf{Risk without a map.} If risk carries
+the safety, then estimating risk from range sensing alone --- no prior map,
+no exact localisation --- is the highest-value robustness extension, and
+it is what would make the method deployable.
+\end{enumerate}
+
+% =====================================================================
+\appendix
+% =====================================================================
+
+\section{Reproduction}
+\label{sec:repro}
+
+Environment: Python $3.13.6$, with pinned dependencies
+\texttt{numpy 2.5.2}, \texttt{scipy 1.18.1}, \texttt{pandas 3.0.5},
+\texttt{scikit-learn 1.9.0}, \texttt{matplotlib 3.11.1},
+\texttt{control 0.10.2}, \texttt{mne 1.12.1}, \texttt{moabb 1.7.1},
+\texttt{PyYAML 6.0.3}, \texttt{pytest 9.1.1}.
+
+\begin{verbatim}
+python -m venv .venv && .venv\Scripts\activate
+pip install -r requirements.txt
+python scripts/probe_toolchain.py      # run first: reports local capability
+
+python -m src.decoder.run_stage1       # ~6 min cold (downloads ~750 MB)
+python -m src.models.run_stage2        # ~5 s
+python -m src.sim.run_stage6 --jobs 18 # ~39 min -> results/episodes.csv
+python -m src.analysis.run_stage7      # ~2 min  -> stability_summary.json
+python -m src.analysis.run_stage8      # ~1 min  -> results/figures/*.pdf
+
+pytest -q                              # 170 tests, ~130 s
+pytest -m "not dataset"                # skips tests needing the EEG download
+
+python -m scripts.verify_all           # provenance + tables + consistency
+python -m scripts.audit_threshold_claims
+python -m scripts.audit_delay_margin
+python -m scripts.check_crossing_direction
+\end{verbatim}
+
+The \texttt{verify\_all} script is the one that matters before the report is
+believed. It re-simulates a stratified sample of \texttt{episodes.csv} from
+each row's job tuple and compares every logged metric, which is what ties the
+committed results to the committed code; it then recomputes the headline table
+and the subject-level bootstrap intervals from the data, and checks that the
+three documents agree and that no retracted claim is still asserted anywhere.
+Its headline-table check covers the success, collision, time and mean-$\alpha$
+columns; the intervention and time-to-collision columns of
+Table~\ref{tab:headline} are not checked automatically, and the script
+checks \texttt{report.tex}; \texttt{FINDINGS.md} and \texttt{README.md}
+have not yet been updated to match this revised report.
+It found a stale test count that a presence-only check had missed, which is
+why it tests for \emph{contradictions} rather than for the right number
+appearing somewhere.
+
+In MATLAB (base install, no toolboxes required), from \texttt{matlab/}:
+
+\begin{verbatim}
+stability_check      % boundary, independently; overlays the Python curve
+replay_on_matlab     % ode45 replay of a Python episode (replaces Simulink)
+pade_vs_exact        % Pade(2,2) against the exact boundary
+\end{verbatim}
+
+All randomness derives from \texttt{meta.seed = 20260901}; reruns are
+bit-identical.
+
+\section{Key Parameters}
+
+Table~\ref{tab:params} lists the parameters that govern the results in
+this report. They are transcribed from the two files under
+\texttt{config/}, which --- not this table --- are authoritative, since
+they are what the code reads at run time.
+
+\begin{longtable}{@{}llr@{}}
+\caption{Complete parameter listing. All values live in
+\texttt{config/default.yaml}; none is hard-coded in source.}
+\label{tab:params}\\
+\toprule
+Group & Parameter & Value \\
+\midrule
+\endfirsthead
+\toprule
+Group & Parameter & Value \\
+\midrule
+\endhead
+Simulation & step $dt$ & $0.02$\,s (50\,Hz) \\
+           & episode timeout & $60$\,s \\
+           & root seed & $20260901$ \\
+\midrule
+Decoder & dataset & BNCI2014\_001 (9 subjects, 4 classes) \\
+        & band & $8$--$30$\,Hz, 4th-order \\
+        & epoch & $[0.5, 2.5]$\,s post-cue \\
+        & CSP components & 6, log-variance \\
+        & classifier & shrinkage LDA (Ledoit--Wolf) \\
+        & calibration & Platt, 25\% stratified holdout \\
+        & latency search & $[0, 4]$\,s, $0.1$\,s step, threshold $0.5$ \\
+\midrule
+Double integrator & damping $d$ & $1.0$ \\
+        & $u_{\max}$ & $6.0$\,m/s$^2$ \\
+\midrule
+Unicycle & $\tau_v$, $\tau_\omega$ & $0.30$\,s, $0.20$\,s \\
+         & $v$ range & $[-0.4, 1.2]$\,m/s \\
+         & $\omega_{\max}$ & $1.5$\,rad/s \\
+         & $\dot v_{\max}$, $\dot\omega_{\max}$ & $1.0$\,m/s$^2$, $3.0$\,rad/s$^2$ \\
+         & collision radius & $0.35$\,m \\
+         & $k_\theta$, speed-gate power & $2.0$, $2.0$ \\
+\midrule
+Operator & $K_p$, $K_d$ & $4.0$, $2.0$ \\
+         & $\tau_h$ & $0.20$\,s \\
+         & decision interval & $2.0$\,s, ZOH \\
+\midrule
+LQR & $q_p$, $q_v$, $r$ & $10.0$, $1.0$, $1.0$ \\
+    & $K_1$, $K_2$ & $3.1622776601683795$, $1.885230548905366$ \\
+\midrule
+DWA & window horizon $\Delta t_w$ & $0.25$\,s \\
+    & plan period & $0.10$\,s (10\,Hz) \\
+    & predict horizon & $1.5$\,s \\
+    & samples & $7 \times 21 = 147$ \\
+    & weights $(w_h, w_c, w_v)$ & $(0.8, 0.4, 0.2)$ \\
+    & clearance cap & $2.0$\,m \\
+    & safety margin & $0.05$\,m \\
+\midrule
+Risk & horizon $H$, floor $F$ & $3.0$\,s, $0.5$\,s \\
+     & lag $\tau_r$ & $0.30$\,s \\
+\midrule
+Adaptive & hysteresis (high, low) & $0.60$, $0.40$ \\
+         & rate limit $\rho$ & $2.0$\,s$^{-1}$ \\
+         & lag $\tau_s$ & $0.25$\,s \\
+\midrule
+Safety filter & $\ttc$ threshold & $1.5$\,s \\
+              & max deviation & unbounded \\
+\midrule
+Experiment & seeds & 20 \\
+           & environments & corridor, doorway, cluttered \\
+           & $\alpha$ sweep & $0.0$ to $1.0$ in steps of $0.1$ \\
+           & burstiness multipliers & $\{1.0, 1.5, 2.5, 4.0\} \times B_{\mathrm{iid},i}$ \\
+           & confidence level & $95\%$, paired \\
+\midrule
+Stability & $\alpha$ grid & 201 points on $[0,1]$ \\
+          & $\tau$ grid & 151 points on $[0, 1.5]$\,s \\
+          & DDE step, horizon & $2\times10^{-3}$\,s, $60$\,s \\
+          & tolerances & $10^{-10}$\,s (check 1), $3\%$ (check 3) \\
+\bottomrule
+\end{longtable}
+
+\section{Test Inventory}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrp{7.4cm}@{}}
+\toprule
+File & Tests & Focus \\
+\midrule
+\texttt{test\_config.py}          & 8  & Config loading, overrides, ablation-key existence \\
+\texttt{test\_decoder\_labels.py} & 6  & Event-id resolution by name; the alphabetical trap \\
+\texttt{test\_decoder\_leakage.py}& 9  & Session separation, $\kappa$/accuracy identity, calibration \\
+\texttt{test\_command\_error.py}  & 12 & Markov fit, burst imposition, positive and negative controls \\
+\texttt{test\_plants.py}          & 36 & Exact ZOH, RK4 vs.\ closed forms, nonholonomy, averaging failure \\
+\texttt{test\_operator.py}        & 21 & Transport delay exactness, copy semantics, reset isolation \\
+\texttt{test\_control.py}         & 27 & LQR linearity, dynamic window, projection, hysteresis \\
+\texttt{test\_stability.py}       & 25 & All three verification checks, $\astar$ criterion, Pad\'e sign \\
+\texttt{test\_sim.py}             & 20 & Navigation field, channel timing, determinism, pairing \\
+\texttt{test\_verify\_all.py}     & 6  & Pattern checks used by \texttt{scripts/verify\_all.py} \\
+\midrule
+\textbf{Total} & \textbf{170} & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Counts are collected test cases, with each parametrised case counted
+separately, which is what \texttt{pytest -q} reports. The $35$ tests
+that need the EEG download are marked \texttt{dataset} and are skipped
+by \texttt{pytest -m "not dataset"}. They are the three modules
+\texttt{test\_decoder\_labels.py}, \texttt{test\_decoder\_leakage.py}
+and \texttt{test\_sim.py}.
+
+% =====================================================================
+\begin{thebibliography}{99}
+% =====================================================================
+
+\bibitem{abbink2018topology}
+D.~A. Abbink, T.~Carlson, M.~Mulder, J.~C.~F. de~Winter, F.~Aminravan,
+T.~M. Gibo, and E.~R. Boer.
+\newblock A topology of shared control systems---finding common ground in
+  diversity.
+\newblock \emph{IEEE Transactions on Human-Machine Systems},
+  48(5):509--525, 2018.
+\newblock doi:10.1109/THMS.2018.2791570.
+
+\bibitem{ames2019cbf}
+A.~D. Ames, S.~Coogan, M.~Egerstedt, G.~Notomista, K.~Sreenath, and
+P.~Tabuada.
+\newblock Control barrier functions: Theory and applications.
+\newblock In \emph{Proceedings of the 18th European Control Conference
+  (ECC)}, pages 3420--3431, 2019.
+
+\bibitem{blankertz2011shrinkage}
+B.~Blankertz, S.~Lemm, M.~Treder, S.~Haufe, and K.-R. M\"uller.
+\newblock Single-trial analysis and classification of ERP
+  components---a tutorial.
+\newblock \emph{NeuroImage}, 56(2):814--825, 2011.
+
+\bibitem{brunner2008graz}
+C.~Brunner, R.~Leeb, G.~R. M\"uller-Putz, A.~Schl\"ogl, and
+G.~Pfurtscheller.
+\newblock BCI Competition 2008---Graz data set A.
+\newblock Institute for Knowledge Discovery, Graz University of
+  Technology, 2008.
+\newblock Four-class motor imagery, 9 subjects, two sessions of 288
+  trials; distributed as BNCI2014\_001.
+
+\bibitem{carlson2013wheelchairs}
+T.~Carlson and J.~del~R. Mill\'an.
+\newblock Brain-controlled wheelchairs: A robotic architecture.
+\newblock \emph{IEEE Robotics \& Automation Magazine}, 20(1):65--73,
+  2013.
+\newblock doi:10.1109/MRA.2012.2229936.
+
+\bibitem{cooke1986zeroes}
+K.~L. Cooke and P.~van~den Driessche.
+\newblock On zeroes of some transcendental equations.
+\newblock \emph{Funkcialaj Ekvacioj}, 29(1):77--90, 1986.
+
+\bibitem{dragan2013blending}
+A.~D. Dragan and S.~S. Srinivasa.
+\newblock A policy-blending formalism for shared control.
+\newblock \emph{The International Journal of Robotics Research},
+  32(7):790--805, 2013.
+\newblock doi:10.1177/0278364913490324.
+
+\bibitem{fox1997dwa}
+D.~Fox, W.~Burgard, and S.~Thrun.
+\newblock The dynamic window approach to collision avoidance.
+\newblock \emph{IEEE Robotics \& Automation Magazine}, 4(1):23--33,
+  1997.
+
+\bibitem{gramfort2013mne}
+A.~Gramfort, M.~Luessi, E.~Larson, D.~A. Engemann, D.~Strohmeier,
+C.~Brodbeck, R.~Goj, M.~Jas, T.~Brooks, L.~Parkkonen, and
+M.~H\"am\"al\"ainen.
+\newblock MEG and EEG data analysis with MNE-Python.
+\newblock \emph{Frontiers in Neuroscience}, 7:267, 2013.
+\newblock doi:10.3389/fnins.2013.00267.
+
+\bibitem{gu2003delay}
+K.~Gu, V.~L. Kharitonov, and J.~Chen.
+\newblock \emph{Stability of Time-Delay Systems}.
+\newblock Birkh\"auser, Boston, 2003.
+\newblock ISBN 0-8176-4212-9.
+
+\bibitem{jayaram2018moabb}
+V.~Jayaram and A.~Barachant.
+\newblock MOABB: Trustworthy algorithm benchmarking for BCIs.
+\newblock \emph{Journal of Neural Engineering}, 15(6):066011, 2018.
+\newblock doi:10.1088/1741-2552/aadea0.
+
+\bibitem{pfurtscheller2001mi}
+G.~Pfurtscheller and C.~Neuper.
+\newblock Motor imagery and direct brain-computer communication.
+\newblock \emph{Proceedings of the IEEE}, 89(7):1123--1134, 2001.
+
+\bibitem{platt1999sigmoid}
+J.~C. Platt.
+\newblock Probabilistic outputs for support vector machines and
+  comparisons to regularized likelihood methods.
+\newblock In \emph{Advances in Large Margin Classifiers}, pages 61--74.
+  MIT Press, 1999.
+
+\bibitem{ramoser2000csp}
+H.~Ramoser, J.~M\"uller-Gerking, and G.~Pfurtscheller.
+\newblock Optimal spatial filtering of single trial EEG during imagined
+  hand movement.
+\newblock \emph{IEEE Transactions on Rehabilitation Engineering},
+  8(4):441--446, 2000.
+
+\bibitem{vanacker2007context}
+G.~Vanacker, J.~del~R. Mill\'an, E.~Lew, P.~W. Ferrez, F.~Gal\'an~Moles,
+J.~Philips, H.~Van~Brussel, and M.~Nuttin.
+\newblock Context-based filtering for assisted brain-actuated wheelchair
+  driving.
+\newblock \emph{Computational Intelligence and Neuroscience},
+  2007:25130, 2007.
+\newblock doi:10.1155/2007/25130.
+
+\end{thebibliography}
+
+\end{document}
